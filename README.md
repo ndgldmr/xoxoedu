@@ -1,18 +1,18 @@
-# xoxo Education — LMS Requirements & Sprint Plan
+# XOXO Education — LMS Requirements & Sprint Plan
 
 ## Table of Contents
 
-1. [Project Overview](#1-project-overview)
-2. [System Architecture](#2-system-architecture)
-3. [Tech Stack](#3-tech-stack)
-4. [Functional Requirements](#4-functional-requirements)
-   - 4.1 [Student-Facing](#41-student-facing)
-   - 4.2 [Admin-Facing](#42-admin-facing)
-5. [Non-Functional Requirements](#5-non-functional-requirements)
-6. [Data Models](#6-data-models)
-7. [API Design Principles](#7-api-design-principles)
-8. [AI Features](#8-ai-features)
-9. [Testing Strategy](#9-testing-strategy)
+ 1. [Project Overview](#1-project-overview)
+ 2. [System Architecture](#2-system-architecture)
+ 3. [Tech Stack](#3-tech-stack)
+ 4. [Functional Requirements](#4-functional-requirements)
+    - 4.1 [Student-Facing](#41-student-facing)
+    - 4.2 [Admin-Facing](#42-admin-facing)
+ 5. [Non-Functional Requirements](#5-non-functional-requirements)
+ 6. [Data Models](#6-data-models)
+ 7. [API Design Principles](#7-api-design-principles)
+ 8. [AI Features](#8-ai-features)
+ 9. [Testing Strategy](#9-testing-strategy)
 10. [Sprint Plan](#10-sprint-plan)
 11. [Definition of Done](#11-definition-of-done)
 12. [Running the Project](#12-running-the-project)
@@ -33,7 +33,7 @@ The system is being developed from scratch rather than forking an existing solut
 **Primary Stakeholders**
 
 | Role | Description |
-|------|-------------|
+| --- | --- |
 | Student | Enrolled learner consuming course content |
 | Admin | Full platform management — creates and delivers courses, grades submissions, moderates content, and configures the platform |
 
@@ -84,7 +84,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Backend
 
 | Layer | Technology | Version | Notes |
-|-------|-----------|---------|-------|
+| --- | --- | --- | --- |
 | Language | Python | 3.12+ | Best AI/ML ecosystem; async-native |
 | Web Framework | FastAPI | Latest stable | Async, auto-generated OpenAPI, dependency injection |
 | ORM | SQLAlchemy (async) | 2.x | Type-safe, best-in-class migration support |
@@ -96,7 +96,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Databases
 
 | Store | Technology | Purpose |
-|-------|-----------|---------|
+| --- | --- | --- |
 | Primary DB | PostgreSQL 16 | All relational data |
 | Vector Store | pgvector (extension) | Lesson embeddings for RAG |
 | Full-Text Search | PostgreSQL FTS + `pg_trgm` | Course/lesson/user search |
@@ -106,7 +106,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### AI / ML
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | LLM | Anthropic Claude (`claude-sonnet-4-6`) | Quiz/assignment feedback; AI grading |
 | Transcription | OpenAI Whisper API | Auto-captions from video audio |
 | Embeddings | OpenAI `text-embedding-3-small` | Lesson content chunks for RAG |
@@ -116,7 +116,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Video & Media
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | Video Hosting | Mux or Cloudflare Stream | Adaptive bitrate (HLS), thumbnail API, analytics |
 | CDN | Cloudflare | Static assets, video edge delivery |
 | Image Processing | Cloudflare Image Resizing or imgix | Thumbnails, avatars |
@@ -125,7 +125,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Auth
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | Access Tokens | JWT (RS256) | 15-minute expiry |
 | Refresh Tokens | Opaque token in httpOnly cookie | 30-day expiry; rotated on use |
 | OAuth2 | Google (via `authlib`) | PKCE flow for mobile |
@@ -135,9 +135,9 @@ The system is being developed from scratch rather than forking an existing solut
 ### Web Client
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | Framework | Next.js 14 (App Router) | SSR for course pages (SEO); CSR for app |
-| Styling | Tailwind CSS | |
+| Styling | Tailwind CSS |  |
 | State | Zustand + React Query (TanStack Query) | Server state via React Query; UI state via Zustand |
 | Video | Video.js or react-player | HLS playback; caption rendering |
 | Testing | Vitest + React Testing Library + Playwright | Unit, component, E2E |
@@ -145,7 +145,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Mobile Client
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | Framework | React Native (Expo) | Shared logic with web |
 | Navigation | Expo Router | File-based routing |
 | State | Zustand + React Query | Same libraries as web |
@@ -155,7 +155,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### Infrastructure
 
 | Component | Technology | Notes |
-|-----------|-----------|-------|
+| --- | --- | --- |
 | Containerization | Docker + Docker Compose | Dev parity with prod |
 | CI/CD | GitHub Actions | Test → lint → build → deploy on merge |
 | Hosting (early) | Railway or Render | Zero-ops start |
@@ -269,7 +269,7 @@ The system is being developed from scratch rather than forking an existing solut
 - **S10.2** Create top-level posts and threaded replies (max 3 levels of nesting).
 - **S10.3** Mention other users with `@username`; mentioned user receives a notification.
 - **S10.4** Upvote posts and replies.
-- **S10.5** Edit and delete own posts (soft-delete: content replaced with "[deleted]", replies preserved).
+- **S10.5** Edit and delete own posts (soft-delete: content replaced with "\[deleted\]", replies preserved).
 - **S10.6** Report a post for moderation review.
 - **S10.7** Receive in-app and email notification when someone replies to your post.
 
@@ -395,30 +395,30 @@ The system is being developed from scratch rather than forking an existing solut
 ### 5.1 Performance
 
 | Metric | Target | Notes |
-|--------|--------|-------|
-| API response time | p95 < 500ms, p99 < 1s | Under normal load |
-| Page load (web) | LCP < 2s on 4G | Next.js SSR for public pages |
-| Video start time | < 3s on broadband | HLS ABR; preload metadata |
-| Database queries | < 100ms for hot paths | Indexed on all FK and filter columns |
-| Search results | < 300ms | PostgreSQL FTS with `pg_trgm` |
-| AI feedback delivery | < 5 minutes | Via background job after submission |
-| Certificate generation | < 30 seconds | PDF generated async |
+| --- | --- | --- |
+| API response time | p95 &lt; 500ms, p99 &lt; 1s | Under normal load |
+| Page load (web) | LCP &lt; 2s on 4G | Next.js SSR for public pages |
+| Video start time | &lt; 3s on broadband | HLS ABR; preload metadata |
+| Database queries | &lt; 100ms for hot paths | Indexed on all FK and filter columns |
+| Search results | &lt; 300ms | PostgreSQL FTS with `pg_trgm` |
+| AI feedback delivery | &lt; 5 minutes | Via background job after submission |
+| Certificate generation | &lt; 30 seconds | PDF generated async |
 
 ### 5.2 Scalability
 
 | Target | Approach |
-|--------|----------|
+| --- | --- |
 | 10,000 concurrent students without re-architecture | Stateless API servers; horizontal scaling via load balancer |
 | 1,000 concurrent video streams | CDN-delivered HLS; API not in video delivery path |
 | Background job throughput | Celery workers scaled independently of API |
 | Database | Connection pooling (PgBouncer); read replicas for analytics queries |
-| Vector search | pgvector handles up to ~1M vectors; migrate to Pinecone at scale |
+| Vector search | pgvector handles up to \~1M vectors; migrate to Pinecone at scale |
 
 ### 5.3 Availability
 
 | Metric | Target |
-|--------|--------|
-| Uptime | 99.9% (~8.7 hrs downtime/year) |
+| --- | --- |
+| Uptime | 99.9% (\~8.7 hrs downtime/year) |
 | Deployment | Zero-downtime deploys (rolling updates) |
 | Database | Automated daily backups; point-in-time recovery; failover replica |
 | AI features | Degrade gracefully; never block core LMS on LLM availability |
@@ -426,7 +426,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### 5.4 Security
 
 | Area | Requirement |
-|------|-------------|
+| --- | --- |
 | Authentication | JWT (RS256); refresh token rotation; revocation on logout |
 | Authorization | RBAC enforced server-side on every endpoint; no client-side trust |
 | Transport | TLS 1.3 only; HSTS enabled |
@@ -442,7 +442,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### 5.5 Accessibility
 
 | Standard | Requirement |
-|----------|-------------|
+| --- | --- |
 | WCAG | 2.1 Level AA compliance for web client |
 | Captions | All video lessons must have captions before publishing |
 | Screen readers | Semantic HTML; ARIA labels on interactive elements |
@@ -453,7 +453,7 @@ The system is being developed from scratch rather than forking an existing solut
 ### 5.6 Reliability
 
 | Area | Requirement |
-|------|-------------|
+| --- | --- |
 | Progress saving | Auto-save every 30s; save on page/app close via `beforeunload` and app state |
 | Video playback | HLS with 3-level quality fallback; resume from last position |
 | Idempotent APIs | Submission endpoints are idempotent (duplicate submissions rejected, not errored) |
@@ -463,18 +463,18 @@ The system is being developed from scratch rather than forking an existing solut
 ### 5.7 Observability
 
 | Component | Tooling |
-|-----------|---------|
+| --- | --- |
 | Structured logging | JSON logs with trace ID, user ID, endpoint on every request |
 | Distributed tracing | OpenTelemetry → Datadog or Grafana Tempo |
 | Metrics | Request rate, error rate, latency (p50/p95/p99), queue depth |
 | Error tracking | Sentry (backend, web, mobile — separate DSNs) |
-| Uptime monitoring | Pingdom or Better Uptime; alert < 1 minute |
+| Uptime monitoring | Pingdom or Better Uptime; alert &lt; 1 minute |
 | AI cost monitoring | Token usage logged per request; daily/monthly dashboard |
 
 ### 5.8 Compliance
 
 | Area | Requirement |
-|------|-------------|
+| --- | --- |
 | GDPR | Data export on request; account deletion with data purge; cookie consent banner |
 | COPPA | Age gate if platform admits under-13 users; parental consent flow |
 | Data retention | User data retained 3 years after last active; purge on request |
@@ -573,12 +573,14 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 - **Versioned:** All routes prefixed with `/api/v1/`.
 - **RESTful resources:** `GET /courses`, `POST /courses`, `GET /courses/{id}`, `PATCH /courses/{id}`, `DELETE /courses/{id}`.
 - **JSON responses** with consistent envelope:
+
   ```json
   { "data": {}, "meta": {}, "error": null }
   ```
 - **Pagination:** Cursor-based for feeds/lists; `?cursor=<token>&limit=20`.
 - **Auth:** `Authorization: Bearer <access_token>` header on all authenticated requests.
 - **Error format:**
+
   ```json
   { "data": null, "error": { "code": "ENROLLMENT_NOT_FOUND", "message": "..." } }
   ```
@@ -608,7 +610,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 - **Pipeline:**
   1. File uploaded → virus-scanned → stored in S3 → text extracted (PDF: `pdfplumber`; DOCX: `python-docx`).
   2. Celery task: `generate_assignment_feedback(submission_id)`.
-  3. Prompt: system prompt (rubric criteria + weights) + extracted submission text (chunked if > context window).
+  3. Prompt: system prompt (rubric criteria + weights) + extracted submission text (chunked if &gt; context window).
   4. Claude returns structured feedback: per-criterion comments + overall score suggestion.
   5. AI feedback stored in `assignment_submissions.ai_feedback`; surfaced to admin when grading.
 - **Human override:** Admin sees AI feedback but publishes their own grade. AI score is advisory only.
@@ -786,7 +788,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### 9.4 Testing Across All Layers
 
 | Type | Backend | Web | Mobile |
-|------|---------|-----|--------|
+| --- | --- | --- | --- |
 | Unit | pytest | Vitest | Jest |
 | Component / Integration | pytest + httpx | React Testing Library | RN Testing Library |
 | E2E | Newman (API) | Playwright | Detox |
@@ -794,6 +796,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 | CI gate | Yes — blocks merge | Yes — blocks merge | Yes — blocks merge |
 
 **Shared test utilities (monorepo):**
+
 - API mock server (MSW — Mock Service Worker) shared between web and mobile tests
 - Test data factories exported from a shared `@xoxo/test-fixtures` package
 - Environment configs per layer (`.env.test`)
@@ -810,84 +813,151 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### Phase 1 — Foundation (Sprints 1–3)
 
 #### Sprint 1 — Project Bootstrap & Auth
+
 **Goal:** A working, deployable API with authentication; CI/CD running.
 
 **Backend:**
+
 - [x] Initialize FastAPI project structure (modules: `auth`, `users`, `courses`, `ai`, `media`)
+
 - [x] Docker Compose: PostgreSQL, Redis, API service, Celery worker
+
 - [x] Alembic configured; initial migration: `users`, `user_profiles`, `sessions`, `oauth_accounts`
+
 - [x] `POST /api/v1/auth/register` — email + password registration
+
 - [x] Email verification flow (send token via Resend; `GET /api/v1/auth/verify-email/{token}`)
+
 - [x] `POST /api/v1/auth/login` — returns JWT access token + sets refresh token cookie
+
 - [x] `POST /api/v1/auth/refresh` — rotates refresh token
+
 - [x] `POST /api/v1/auth/logout` — revokes refresh token
+
 - [x] `POST /api/v1/auth/forgot-password` and `POST /api/v1/auth/reset-password/{token}`
-- [x] Google OAuth2 flow (`/auth/google`, `/auth/google/callback`)
+
 - [x] RBAC middleware: role-based route guards
+
 - [x] `GET /api/v1/users/me` — return current user profile
+
 - [x] `PATCH /api/v1/users/me` — update profile
 
+- [x] `GET /api/v1/users/me/sessions` — list active sessions
+
+- [x] `DELETE /api/v1/users/me/sessions/{id}` — revoke a session
+
+- [x] `GET /api/v1/admin/users` — list all users (admin only)
+
+- [x] `PATCH /api/v1/admin/users/{id}/role` — promote / demote a user (admin only)
+
+- [x] `DELETE /api/v1/admin/users/{id}` — delete a user (admin only)
+
+- [x] `scripts/create_admin.py` — seed script to bootstrap the first admin account
+
 **Testing (Sprint 1):**
+
 - [x] Unit tests: token generation/validation, password hashing, permission guards
+
 - [x] Integration tests: full auth flows (register, verify, login, refresh, logout, reset)
-- [x] Integration tests: OAuth callback (mocked Google response)
+
+- [x] Integration tests: admin user management (list, promote, demote, delete, RBAC guards)
+
 - [x] CI pipeline: GitHub Actions running `pytest` on every PR
 
 **Infrastructure:**
+
 - [x] GitHub Actions CI: lint (`ruff`), type check (`mypy`), test (`pytest`)
+
 - [x] Codecov integration
+
 - [ ] Railway/Render deployment pipeline
 
 ---
 
 #### Sprint 2 — Course Structure & Content
+
 **Goal:** Admins can create courses with full content hierarchy; students can browse and view.
 
 **Backend:**
+
 - [ ] Migrations: `categories`, `courses`, `chapters`, `lessons`, `lesson_resources`
+
 - [ ] `POST /api/v1/courses` — create course (admin only)
+
 - [ ] `GET /api/v1/courses` — list published courses (filterable: category, level, price)
+
 - [ ] `GET /api/v1/courses/{slug}` — course detail with chapters and lessons
+
 - [ ] `PATCH /api/v1/courses/{id}` — update course
+
 - [ ] `DELETE /api/v1/courses/{id}` — soft-delete (archive)
+
 - [ ] `POST /api/v1/courses/{id}/chapters` — create chapter
+
 - [ ] `PATCH /api/v1/chapters/{id}` — update chapter; `DELETE /api/v1/chapters/{id}`
+
 - [ ] `PATCH /api/v1/courses/{id}/chapters/reorder` — update chapter positions
+
 - [ ] `POST /api/v1/chapters/{id}/lessons` — create lesson
+
 - [ ] `PATCH /api/v1/lessons/{id}` — update lesson; `DELETE /api/v1/lessons/{id}`
+
 - [ ] `PATCH /api/v1/chapters/{id}/lessons/reorder` — update lesson positions
+
 - [ ] `POST /api/v1/lessons/{id}/resources` — attach resource
+
 - [ ] PostgreSQL FTS search: `GET /api/v1/search?q=...`
 
 **Testing (Sprint 2):**
+
 - [ ] Unit tests: slug generation, ordering logic, permission checks per role
+
 - [ ] Integration tests: full CRUD for course → chapter → lesson hierarchy
+
 - [ ] Integration tests: reorder chapters and lessons; verify positions
+
 - [ ] Integration tests: search returns correct results; non-published courses excluded
 
 ---
 
 #### Sprint 3 — Enrollment & Progress
+
 **Goal:** Students can enroll in free courses and track their progress.
 
 **Backend:**
+
 - [ ] Migrations: `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks`
+
 - [ ] `POST /api/v1/courses/{id}/enroll` — enroll in free course
+
 - [ ] `DELETE /api/v1/enrollments/{id}` — unenroll
+
 - [ ] `GET /api/v1/users/me/enrollments` — list student's enrollments
+
 - [ ] `POST /api/v1/lessons/{id}/progress` — save lesson progress (idempotent)
+
 - [ ] `GET /api/v1/courses/{id}/progress` — get full course progress for current user
+
 - [ ] `GET /api/v1/users/me/continue` — return the next incomplete lesson per enrolled course
+
 - [ ] `POST /api/v1/lessons/{id}/notes` — create/update personal note
+
 - [ ] `GET /api/v1/lessons/{id}/notes` — get personal note
+
 - [ ] `POST /api/v1/lessons/{id}/bookmark` — bookmark lesson
+
 - [ ] `DELETE /api/v1/lessons/{id}/bookmark` — remove bookmark
+
 - [ ] `GET /api/v1/users/me/bookmarks` — list all bookmarks
 
 **Testing (Sprint 3):**
+
 - [ ] Unit tests: progress percentage calculation, enrollment eligibility, completion detection
+
 - [ ] Integration tests: enroll → mark lessons complete → course progress updates
+
 - [ ] Integration tests: unenroll + re-enroll → prior progress preserved
+
 - [ ] Integration tests: idempotency — duplicate progress saves do not create duplicate records
 
 ---
@@ -895,73 +965,121 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### Phase 2 — Assessment & Payments (Sprints 4–6)
 
 #### Sprint 4 — Quizzes & Assignments
+
 **Goal:** Students can take quizzes and submit assignments; objective quiz scoring works.
 
 **Backend:**
+
 - [ ] Migrations: `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
+
 - [ ] `POST /api/v1/lessons/{id}/quiz` — create quiz
+
 - [ ] `GET /api/v1/quizzes/{id}` — get quiz (questions shuffled if configured; no correct answers exposed)
+
 - [ ] `POST /api/v1/quizzes/{id}/submit` — submit quiz; auto-score objective questions
+
 - [ ] `GET /api/v1/quizzes/{id}/submissions` — student's submission history
+
 - [ ] `POST /api/v1/lessons/{id}/assignment` — create assignment
+
 - [ ] `GET /api/v1/assignments/{id}` — get assignment detail
+
 - [ ] `POST /api/v1/assignments/{id}/submit` — submit assignment (text or file)
+
 - [ ] File upload: presigned S3 URL flow (`POST /api/v1/media/upload-url`)
+
 - [ ] Virus scan hook on S3 upload completion
+
 - [ ] `GET /api/v1/assignments/{id}/submissions` — student's submission history
 
 **Testing (Sprint 4):**
+
 - [ ] Unit tests: quiz scoring (single-choice, multi-choice, partial credit), attempt limit enforcement, time limit
+
 - [ ] Unit tests: assignment submission type validation, file MIME validation, max submissions enforcement
+
 - [ ] Integration tests: submit quiz → verify score → verify attempt count increments
+
 - [ ] Integration tests: quiz answer exposure: correct answers NOT returned before all attempts exhausted
+
 - [ ] Integration tests: assignment file upload flow (mocked S3)
 
 ---
 
 #### Sprint 5 — Payments & Certificates
+
 **Goal:** Paid course enrollment via Stripe; certificates issued on completion.
 
 **Backend:**
+
 - [ ] Migrations: `payments`, `coupons`, `certificates`, `certificate_requests`
+
 - [ ] Stripe integration: `POST /api/v1/payments/checkout` — create Stripe Checkout session
+
 - [ ] `POST /api/v1/payments/webhook` — handle Stripe webhooks (payment success → enrollment)
+
 - [ ] `POST /api/v1/coupons/validate` — validate coupon code, return discount
+
 - [ ] `GET /api/v1/users/me/payments` — payment history
+
 - [ ] Certificate eligibility check (post progress-save hook)
+
 - [ ] `POST /api/v1/certificates/generate` — trigger certificate PDF generation (Celery task)
+
 - [ ] Certificate PDF generation: WeasyPrint or Puppeteer; stored in S3
+
 - [ ] `GET /api/v1/certificates` — list student's certificates
+
 - [ ] `GET /api/v1/verify/{token}` — public certificate verification (no auth)
+
 - [ ] `POST /api/v1/certificate-requests` — manual review flow
 
 **Testing (Sprint 5):**
+
 - [ ] Unit tests: coupon discount calculation (percentage, fixed), expiry check, usage cap
+
 - [ ] Integration tests: Stripe webhook → enrollment created → student can access course
+
 - [ ] Integration tests: certificate eligibility: all lessons complete + passing quiz = certificate issued
+
 - [ ] Integration tests: public verification URL returns correct data; invalid token returns 404
+
 - [ ] Integration tests: refund webhook → enrollment status updated
 
 ---
 
 #### Sprint 6 — Admin Grading & Analytics
+
 **Goal:** Admins can grade submissions; basic analytics dashboard data available.
 
 **Backend:**
+
 - [ ] `GET /api/v1/admin/courses/{id}/submissions` — paginated submission queue with filters
+
 - [ ] `PATCH /api/v1/admin/submissions/{id}/grade` — save grade + feedback (draft/published)
+
 - [ ] `POST /api/v1/admin/submissions/{id}/reopen` — allow student resubmission
+
 - [ ] `GET /api/v1/admin/courses/{id}/analytics` — completion rate, average quiz score, lesson drop-off
+
 - [ ] `GET /api/v1/admin/analytics/platform` — platform-wide metrics (admin only)
+
 - [ ] `GET /api/v1/admin/courses/{id}/students` — student progress table
+
 - [ ] Analytics: read replica or materialized view for aggregation queries
+
 - [ ] `POST /api/v1/admin/announcements` — send announcement (email via Celery)
+
 - [ ] `GET /api/v1/admin/announcements` — list announcements
 
 **Testing (Sprint 6):**
+
 - [ ] Unit tests: grade calculation, submission queue ordering
+
 - [ ] Integration tests: grade submission → grade_published_at set → notification enqueued
+
 - [ ] Integration tests: analytics aggregations correct with known fixture data
+
 - [ ] Integration tests: announcement sends email to all enrolled students (mocked email)
 
 ---
@@ -969,74 +1087,123 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### Phase 3 — AI Layer (Sprints 7–9)
 
 #### Sprint 7 — AI Quiz & Assignment Feedback
+
 **Goal:** Short-answer quiz questions and assignment submissions receive Claude-generated feedback.
 
 **Backend:**
+
 - [ ] Claude API integration: `AnthropicClient` wrapper with retry logic and circuit breaker
+
 - [ ] Prompt template system (Jinja2): `quiz_feedback.j2`, `assignment_feedback.j2`
+
 - [ ] Celery task: `generate_quiz_feedback(submission_id)` — triggered post-submit
+
 - [ ] `quiz_feedback` table and storage
+
 - [ ] Celery task: `generate_assignment_feedback(submission_id)` — triggered post-submit
+
 - [ ] Text extraction from PDF (`pdfplumber`) and DOCX (`python-docx`) for file submissions
+
 - [ ] AI feedback fields in submission response DTOs
+
 - [ ] `GET /api/v1/admin/ai/config/{course_id}` — get AI config
+
 - [ ] `PATCH /api/v1/admin/ai/config/{course_id}` — update AI config (on/off, tone, system prompt)
+
 - [ ] Token usage logging: `ai_usage_logs` table
 
 **Testing (Sprint 7):**
+
 - [ ] Unit tests: prompt template rendering with various inputs; assert rubric, question, and answer injected correctly
+
 - [ ] Unit tests: AI response parsing; malformed LLM response handling
+
 - [ ] Unit tests: token count estimation; prompt truncation when over context limit
+
 - [ ] Integration tests: submit short-answer quiz → Celery task fires → feedback stored (mocked Claude)
+
 - [ ] Integration tests: submit assignment → text extraction → Celery task fires → feedback stored (mocked Claude)
+
 - [ ] Integration tests: AI disabled per course → no feedback task enqueued
 
 ---
 
 #### Sprint 8 — Video Transcription & RAG Indexing
+
 **Goal:** Video lessons auto-generate transcripts; course content is indexed for RAG.
 
 **Backend:**
+
 - [ ] Mux / Cloudflare Stream integration: upload endpoint, webhook receiver
+
 - [ ] Celery task: `generate_transcript(lesson_id)` — triggered on video ready webhook
+
 - [ ] Whisper API call; VTT file generation and S3 upload
+
 - [ ] `lesson_transcripts` table populated; admin notification sent
+
 - [ ] `GET /api/v1/lessons/{id}/transcript` — return transcript (VTT + plain text)
+
 - [ ] `PATCH /api/v1/lessons/{id}/transcript` — admin edits transcript
+
 - [ ] Celery task: `index_lesson(lesson_id)` — chunk + embed on lesson publish
+
 - [ ] `lesson_chunks` table with pgvector; embedding via OpenAI
+
 - [ ] Re-index triggered on lesson content or transcript update
+
 - [ ] Index health: `GET /api/v1/admin/courses/{id}/index-status`
 
 **Testing (Sprint 8):**
+
 - [ ] Unit tests: text chunking algorithm (correct overlap, no orphaned sentences)
+
 - [ ] Unit tests: VTT generation from Whisper response
+
 - [ ] Integration tests: video webhook → transcript task fires → VTT stored (mocked Whisper)
+
 - [ ] Integration tests: lesson published → index task fires → chunks and embeddings stored (mocked OpenAI embeddings)
+
 - [ ] Integration tests: lesson content updated → re-index fires → old chunks replaced
 
 ---
 
 #### Sprint 9 — RAG Course Assistant
+
 **Goal:** Students can chat with a course assistant that answers from indexed course content.
 
 **Backend:**
+
 - [ ] `POST /api/v1/courses/{id}/assistant` — start or continue conversation
+
 - [ ] SSE streaming endpoint: `GET /api/v1/assistant/conversations/{id}/stream`
+
 - [ ] Query pipeline: embed query → pgvector cosine search (scoped to course + enrollment check) → build prompt → stream Claude response
+
 - [ ] Citation extraction and injection into response
+
 - [ ] Conversation history management: load last 8 turns; truncate if over token limit
+
 - [ ] `GET /api/v1/assistant/conversations` — list student's conversations per course
+
 - [ ] Token usage logged per message
+
 - [ ] Rate limiting: 20 AI queries per student per hour per course
+
 - [ ] Scope enforcement test: student of course A cannot retrieve chunks from course B
 
 **Testing (Sprint 9):**
+
 - [ ] Unit tests: conversation history truncation algorithm; citation extraction from chunks
+
 - [ ] Unit tests: scope enforcement — WHERE clause always contains correct course_id
+
 - [ ] Integration tests: full RAG pipeline (mock embeddings + mock Claude) → response cites correct lessons
+
 - [ ] Integration tests: student not enrolled → 403 on assistant endpoint
+
 - [ ] Integration tests: student of course A → cannot receive results from course B chunks (boundary test)
+
 - [ ] Integration tests: rate limit enforced after 20 requests
 
 ---
@@ -1044,50 +1211,83 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### Phase 4 — Real-Time & Social (Sprints 10–11)
 
 #### Sprint 10 — Discussions & Notifications
+
 **Goal:** Per-lesson discussion threads; full in-app and email notification system.
 
 **Backend:**
+
 - [ ] Migrations: `discussion_posts`, `discussion_flags`, `notifications`, `notification_prefs`
+
 - [ ] `POST /api/v1/lessons/{id}/discussions` — create post or reply
+
 - [ ] `GET /api/v1/lessons/{id}/discussions` — paginated thread (cursor-based)
+
 - [ ] `PATCH /api/v1/discussions/{id}` — edit post (own post only)
+
 - [ ] `DELETE /api/v1/discussions/{id}` — soft-delete
+
 - [ ] `POST /api/v1/discussions/{id}/upvote`
+
 - [ ] `POST /api/v1/discussions/{id}/flag`
+
 - [ ] `GET /api/v1/admin/moderation/flags` — flagged posts queue
+
 - [ ] `POST /api/v1/admin/moderation/flags/{id}/resolve`
+
 - [ ] Notification creation hooks (discussion reply, mention, grade, certificate)
+
 - [ ] `GET /api/v1/notifications` — paginated list; unread count
+
 - [ ] `POST /api/v1/notifications/read-all`
+
 - [ ] `PATCH /api/v1/notification-prefs` — update per-type preferences
+
 - [ ] Email notification Celery tasks with Resend
+
 - [ ] WebSocket/SSE for real-time notification delivery
 
 **Testing (Sprint 10):**
+
 - [ ] Unit tests: mention parsing (`@username` extraction), soft-delete content replacement
+
 - [ ] Integration tests: post reply → author receives notification (in-app + email enqueued)
+
 - [ ] Integration tests: soft-delete → content replaced → replies still visible
+
 - [ ] Integration tests: flag post → appears in moderation queue
+
 - [ ] Integration tests: notification prefs opt-out → email not enqueued for that type
 
 ---
 
 #### Sprint 11 — Batches & Live Sessions
+
 **Goal:** Cohort-based batches with timetables; live session scheduling and calendar.
 
 **Backend:**
+
 - [ ] Migrations: `batches`, `batch_enrollments`, `live_sessions`, `session_attendance`
+
 - [ ] Full CRUD for batches and batch enrollments
+
 - [ ] `POST /api/v1/batches/{id}/live-sessions` — create live session (Zoom or Meet link)
+
 - [ ] `GET /api/v1/users/me/calendar` — all upcoming sessions across enrolled batches
+
 - [ ] `GET /api/v1/users/me/calendar.ics` — iCal export
+
 - [ ] Live session reminder Celery tasks (1 hour before start)
+
 - [ ] `POST /api/v1/live-sessions/{id}/attendance` — mark attendance
+
 - [ ] `GET /api/v1/admin/batches/{id}/attendance` — attendance report
 
 **Testing (Sprint 11):**
+
 - [ ] Unit tests: iCal generation format validity
+
 - [ ] Integration tests: create live session → reminder task scheduled at correct time
+
 - [ ] Integration tests: calendar endpoint returns only sessions from enrolled batches
 
 ---
@@ -1095,20 +1295,33 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 ### Phase 5 — Platform Hardening (Sprint 12)
 
 #### Sprint 12 — Observability, Security Hardening & Performance
+
 **Goal:** Production-ready platform with full observability, security audit complete, performance benchmarks met.
 
 - [ ] OpenTelemetry instrumentation on all API routes (trace ID, latency, status)
+
 - [ ] Sentry integration (backend + web + mobile)
+
 - [ ] Structured JSON logging with correlation IDs
+
 - [ ] Rate limiting: per-IP (auth endpoints), per-user (AI endpoints, submission endpoints)
+
 - [ ] Security headers: CSP, HSTS, X-Content-Type-Options, X-Frame-Options
+
 - [ ] Dependency audit: `pip-audit` and `npm audit` in CI; no high-severity vulnerabilities
+
 - [ ] OWASP scan against staging environment
-- [ ] Load test: 10k simulated concurrent users with k6; verify p95 < 500ms API responses
+
+- [ ] Load test: 10k simulated concurrent users with k6; verify p95 &lt; 500ms API responses
+
 - [ ] Database: add missing indexes; run `EXPLAIN ANALYZE` on all hot-path queries
+
 - [ ] PgBouncer connection pooling configured
+
 - [ ] Audit log: all admin actions write to `audit_logs`
+
 - [ ] GDPR endpoints: `GET /api/v1/users/me/export` and `DELETE /api/v1/users/me`
+
 - [ ] Full E2E test suite run against staging; all Playwright and Detox journeys green
 
 ---
@@ -1118,58 +1331,101 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 > Client sprints run in parallel with backend sprints and consume the APIs as they are delivered.
 
 #### Web Client Sprint W1 (parallel with Backend S1–S2)
+
 - [ ] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
+
 - [ ] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
+
 - [ ] Auth: login page, register page, OAuth redirect, token refresh interceptor
+
 - [ ] Protected routes: middleware redirects unauthenticated users
+
 - [ ] Course browse page: grid, filter sidebar, search
+
 - [ ] Course detail page: syllabus, instructor, reviews (SSR)
+
 - [ ] Vitest + React Testing Library setup; Playwright setup
+
 - [ ] CI: web lint, type check, unit tests, Playwright smoke test on every PR
 
 #### Web Client Sprint W2 (parallel with Backend S3–S4)
+
 - [ ] Enrolled course dashboard: progress cards, continue CTA
+
 - [ ] Lesson page: video player (HLS + captions), rich-text content, resource downloads
+
 - [ ] Lesson sidebar: chapter/lesson nav, completion indicators, lock state
+
 - [ ] Progress auto-save hook (30s interval + `beforeunload`)
+
 - [ ] Notes and bookmarks UI
+
 - [ ] Quiz component: question renderer, answer selection, submission, feedback display
+
 - [ ] Assignment submission: text editor + file upload (presigned URL flow)
 
 #### Web Client Sprint W3 (parallel with Backend S5–S9)
+
 - [ ] Stripe checkout integration
+
 - [ ] Certificate page: download PDF, share verification link
+
 - [ ] AI assistant chat UI: SSE streaming display, citations, conversation history
+
 - [ ] Admin: course builder (chapter/lesson CRUD, drag-and-drop reorder)
+
 - [ ] Admin: quiz builder
+
 - [ ] Admin: assignment builder with AI rubric suggestion
+
 - [ ] Admin: submission grading queue
 
 #### Web Client Sprint W4 (parallel with Backend S10–S12)
+
 - [ ] Discussion threads: post, reply, upvote, flag, mentions
+
 - [ ] Notification center: real-time badge, list, mark-read
+
 - [ ] Calendar page: upcoming live sessions, iCal export
+
 - [ ] Admin: analytics dashboard (charts: completion, quiz scores, engagement)
+
 - [ ] Admin: announcements
+
 - [ ] Admin: AI usage dashboard
+
 - [ ] Playwright: all critical journey E2E tests
+
 - [ ] Accessibility audit: axe-core scan; WCAG 2.1 AA fixes
 
 #### Mobile Client Sprint M1 (parallel with Web W1–W2)
+
 - [ ] Expo project setup: TypeScript, Expo Router, Tailwind (NativeWind)
+
 - [ ] Auth screens: login, register, OAuth (PKCE)
+
 - [ ] Course browse + detail screens
+
 - [ ] Lesson screen: expo-video player with captions, rich-text renderer
+
 - [ ] Progress auto-save with offline queue (flush on reconnect)
+
 - [ ] Jest + React Native Testing Library setup; Detox setup
 
 #### Mobile Client Sprint M2 (parallel with Web W3–W4)
+
 - [ ] Quiz screen
+
 - [ ] Assignment submission screen (text + file picker)
+
 - [ ] AI assistant screen (streaming)
+
 - [ ] Notification screen; push notification registration + handling
+
 - [ ] Calendar screen; deep-link from notification to live session
+
 - [ ] Certificate screen
+
 - [ ] Detox: critical journey E2E on iOS simulator and Android emulator
 
 ---
@@ -1182,7 +1438,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ### Sprint 1 — Auth API
 
-**What's available:** Full authentication API — registration, email verification, login, token refresh, logout, password reset, Google OAuth2, and user profile management.
+**What's available:** Full authentication API — registration, email verification, login, token refresh, logout, password reset, Google OAuth2, and user profile management. Admin users can list, promote/demote, and delete accounts.
 
 #### Prerequisites
 
@@ -1204,7 +1460,7 @@ uv run scripts/setup_env.py
 
 This generates RSA keys and a secret key automatically, then prompts for the credentials that require external accounts (Google OAuth2, Resend). Have these ready:
 
-- **Google OAuth2** — `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from [console.cloud.google.com](https://console.cloud.google.com) > APIs & Services > Credentials
+- **Google OAuth2** — `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from [console.cloud.google.com](https://console.cloud.google.com) &gt; APIs & Services &gt; Credentials
 - **Resend** — `RESEND_API_KEY` from [resend.com/api-keys](https://resend.com/api-keys)
 
 #### 3. Start infrastructure
@@ -1219,7 +1475,15 @@ docker compose up db redis -d
 uv run alembic upgrade head
 ```
 
-#### 5. Start the API
+#### 5. Create the first admin account
+
+```bash
+uv run scripts/create_admin.py admin@example.com yourpassword
+```
+
+If the email already exists as a student it will be promoted to admin. Run this once after migrations.
+
+#### 6. Start the API
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -1228,7 +1492,7 @@ uv run uvicorn app.main:app --reload
 API is now running at `http://localhost:8000`.
 Interactive docs at `http://localhost:8000/api/docs`.
 
-#### 6. Start the Celery worker (required for emails)
+#### 7. Start the Celery worker (required for emails)
 
 In a second terminal:
 
@@ -1239,16 +1503,19 @@ uv run celery -A app.worker.celery_app worker --loglevel=info
 #### Running tests
 
 Unit tests (no database required):
+
 ```bash
 uv run pytest tests/unit/ --no-cov
 ```
 
 Integration tests (requires Docker Postgres running on port 5432):
+
 ```bash
 uv run pytest tests/integration/ --no-cov
 ```
 
 Full suite with coverage:
+
 ```bash
 uv run pytest
 ```
@@ -1256,7 +1523,7 @@ uv run pytest
 #### Available endpoints (Sprint 1)
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
+| --- | --- | --- |
 | `POST` | `/api/v1/auth/register` | Register with email + password |
 | `GET` | `/api/v1/auth/verify-email/{token}` | Verify email address |
 | `POST` | `/api/v1/auth/resend-verification` | Resend verification email |
@@ -1271,6 +1538,9 @@ uv run pytest
 | `PATCH` | `/api/v1/users/me` | Update profile |
 | `GET` | `/api/v1/users/me/sessions` | List active sessions |
 | `DELETE` | `/api/v1/users/me/sessions/{id}` | Revoke a session |
+| `GET` | `/api/v1/admin/users` | List all users (admin only) |
+| `PATCH` | `/api/v1/admin/users/{id}/role` | Promote / demote a user (admin only) |
+| `DELETE` | `/api/v1/admin/users/{id}` | Delete a user (admin only) |
 | `GET` | `/health` | Health check |
 
 ---
@@ -1330,7 +1600,7 @@ sequenceDiagram
 ```
 
 | Credential | Format | Lifetime | Storage |
-|---|---|---|---|
+| --- | --- | --- | --- |
 | Access token | JWT RS256 | 15 minutes | Memory / `Authorization` header |
 | Refresh token | Opaque random bytes | 30 days | httpOnly cookie (not readable by JS) |
 
@@ -1519,7 +1789,7 @@ erDiagram
 ```
 
 | Endpoint | What it does |
-|---|---|
+| --- | --- |
 | `GET /users/me/sessions` | Lists all sessions — active and revoked |
 | `DELETE /users/me/sessions/{id}` | Revokes one session (remote sign-out) |
 | `POST /auth/logout` | Revokes the current session |
@@ -1535,7 +1805,7 @@ A session is **active** when `revoked_at IS NULL` and `expires_at > now()`. The 
 A feature is done when **all** of the following are true:
 
 | Criterion | Requirement |
-|-----------|-------------|
+| --- | --- |
 | **Code** | Implementation complete and passes linting (`ruff`, `eslint`) and type checking (`mypy`, TypeScript strict) |
 | **Tests** | Unit and integration tests written; no new untested business logic; coverage does not drop below threshold |
 | **E2E** | Affected user journeys covered by Playwright (web) or Detox (mobile) |

@@ -57,6 +57,12 @@ class SessionNotFound(AppException):
     message = "Session not found"
 
 
+class UserNotFound(AppException):
+    status_code = 404
+    error_code = "USER_NOT_FOUND"
+    message = "User not found"
+
+
 class Forbidden(AppException):
     status_code = 403
     error_code = "FORBIDDEN"
