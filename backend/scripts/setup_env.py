@@ -8,7 +8,6 @@ Prompts for credentials that must come from external services.
 Usage:
     uv run scripts/setup_env.py
 """
-import os
 import secrets
 import sys
 from pathlib import Path
@@ -54,7 +53,7 @@ def main() -> None:
     print("\nxoxo Education — Environment Setup\n" + "=" * 36)
 
     if ENV_FILE.exists():
-        overwrite = input(f"\n.env already exists. Overwrite? [y/N]: ").strip().lower()
+        overwrite = input("\n.env already exists. Overwrite? [y/N]: ").strip().lower()
         if overwrite != "y":
             print("Aborted.")
             sys.exit(0)

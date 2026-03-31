@@ -63,6 +63,60 @@ class UserNotFound(AppException):
     message = "User not found"
 
 
+class CategoryNotFound(AppException):
+    status_code = 422
+    error_code = "CATEGORY_NOT_FOUND"
+    message = "The specified category does not exist"
+
+
+class CourseNotFound(AppException):
+    status_code = 404
+    error_code = "COURSE_NOT_FOUND"
+    message = "Course not found"
+
+
+class ChapterNotFound(AppException):
+    status_code = 404
+    error_code = "CHAPTER_NOT_FOUND"
+    message = "Chapter not found"
+
+
+class LessonNotFound(AppException):
+    status_code = 404
+    error_code = "LESSON_NOT_FOUND"
+    message = "Lesson not found"
+
+
+class SlugConflict(AppException):
+    status_code = 409
+    error_code = "SLUG_CONFLICT"
+    message = "A course with this slug already exists"
+
+
+class SlugImmutable(AppException):
+    status_code = 409
+    error_code = "SLUG_IMMUTABLE"
+    message = "Slug cannot be changed after publication"
+
+
+class InvalidStatusTransition(AppException):
+    status_code = 409
+    error_code = "INVALID_STATUS_TRANSITION"
+    message = "This status transition is not allowed"
+
+
+class InvalidChapterIds(AppException):
+    status_code = 400
+    error_code = "INVALID_CHAPTER_IDS"
+    message = "Provided IDs do not match the chapters in this course"
+
+
+class InvalidLessonIds(AppException):
+    status_code = 400
+    error_code = "INVALID_LESSON_IDS"
+    message = "Provided IDs do not match the lessons in this chapter"
+
+
 class Forbidden(AppException):
     status_code = 403
     error_code = "FORBIDDEN"

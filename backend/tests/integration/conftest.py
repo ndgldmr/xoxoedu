@@ -3,7 +3,7 @@ from collections.abc import AsyncGenerator
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 import app.db.models  # noqa: F401 — register all models with Base.metadata
@@ -17,9 +17,12 @@ TEST_DATABASE_URL_SYNC = os.environ["DATABASE_URL_SYNC"]
 
 @pytest.fixture(scope="session", autouse=True)
 def setup_database() -> None:
-    """Create tables once using a synchronous connection — avoids event loop issues."""
+    """Create tables using the ORM model definitions (includes generated columns)."""
     sync_engine = create_engine(TEST_DATABASE_URL_SYNC)
     Base.metadata.drop_all(sync_engine)
+    with sync_engine.connect() as conn:
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        conn.commit()
     Base.metadata.create_all(sync_engine)
     yield
     Base.metadata.drop_all(sync_engine)
