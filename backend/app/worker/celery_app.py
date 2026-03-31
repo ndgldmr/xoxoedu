@@ -13,6 +13,7 @@ celery_app.conf.update(
     task_track_started=True,
     task_acks_late=True,
     worker_prefetch_multiplier=1,
+    worker_concurrency=2,
 )
 
 celery_app.autodiscover_tasks(["app.modules.auth"])
