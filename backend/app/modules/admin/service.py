@@ -11,7 +11,9 @@ async def list_users(db: AsyncSession, skip: int, limit: int) -> tuple[list[User
     count_result = await db.execute(select(User))
     total = len(count_result.scalars().all())
 
-    result = await db.execute(select(User).order_by(User.created_at.desc()).offset(skip).limit(limit))
+    result = await db.execute(
+        select(User).order_by(User.created_at.desc()).offset(skip).limit(limit)
+    )
     return list(result.scalars().all()), total
 
 

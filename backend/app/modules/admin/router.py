@@ -1,7 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Query
-from fastapi import Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rbac import Role, require_role

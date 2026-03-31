@@ -29,7 +29,9 @@ async def test_list_users_as_admin(client: AsyncClient, db: AsyncSession) -> Non
     _, admin_token = await _make_user(db, "admin-list@example.com", role="admin")
     await _make_user(db, "student-list@example.com")
 
-    resp = await client.get("/api/v1/admin/users", headers={"Authorization": f"Bearer {admin_token}"})
+    resp = await client.get(
+        "/api/v1/admin/users", headers={"Authorization": f"Bearer {admin_token}"}
+    )
     assert resp.status_code == 200
     body = resp.json()
     assert body["meta"]["total"] >= 2
@@ -39,7 +41,9 @@ async def test_list_users_as_admin(client: AsyncClient, db: AsyncSession) -> Non
 @pytest.mark.asyncio
 async def test_list_users_forbidden_for_student(client: AsyncClient, db: AsyncSession) -> None:
     _, student_token = await _make_user(db, "student-forbidden@example.com")
-    resp = await client.get("/api/v1/admin/users", headers={"Authorization": f"Bearer {student_token}"})
+    resp = await client.get(
+        "/api/v1/admin/users", headers={"Authorization": f"Bearer {student_token}"}
+    )
     assert resp.status_code == 403
 
 
@@ -100,7 +104,9 @@ async def test_delete_user(client: AsyncClient, db: AsyncSession) -> None:
     assert resp.status_code == 204
 
     # Confirm the user is gone from the list
-    list_resp = await client.get("/api/v1/admin/users", headers={"Authorization": f"Bearer {admin_token}"})
+    list_resp = await client.get(
+        "/api/v1/admin/users", headers={"Authorization": f"Bearer {admin_token}"}
+    )
     ids = [u["id"] for u in list_resp.json()["data"]]
     assert str(target.id) not in ids
 
