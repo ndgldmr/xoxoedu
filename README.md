@@ -870,7 +870,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [x] Codecov integration
 
-- [ ] Railway/Render deployment pipeline
+- [x] Railway deployment pipeline — API, Celery worker, Postgres, Redis
 
 ---
 
