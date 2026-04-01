@@ -187,6 +187,46 @@ class Forbidden(AppException):
     message = "Insufficient permissions"
 
 
+class AlreadyEnrolled(AppException):
+    """Raised when a student attempts to enroll in a course they are already active in."""
+
+    status_code = 409
+    error_code = "ALREADY_ENROLLED"
+    message = "You are already enrolled in this course"
+
+
+class NotEnrolled(AppException):
+    """Raised when a student accesses enrollment-gated content without an active enrollment."""
+
+    status_code = 403
+    error_code = "NOT_ENROLLED"
+    message = "You must be enrolled in this course to perform this action"
+
+
+class CourseNotEnrollable(AppException):
+    """Raised when a student tries to enroll in a course that is not published or is not free."""
+
+    status_code = 422
+    error_code = "COURSE_NOT_ENROLLABLE"
+    message = "This course is not available for enrollment"
+
+
+class EnrollmentNotFound(AppException):
+    """Raised when an enrollment cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "ENROLLMENT_NOT_FOUND"
+    message = "Enrollment not found"
+
+
+class NoteNotFound(AppException):
+    """Raised when a student's note on a lesson cannot be found."""
+
+    status_code = 404
+    error_code = "NOTE_NOT_FOUND"
+    message = "Note not found"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 

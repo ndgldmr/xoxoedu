@@ -20,6 +20,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.ai.router import router as ai_router
 from app.modules.auth.router import router as auth_router
 from app.modules.courses.router import router as courses_router
+from app.modules.enrollments.router import router as enrollments_router
 from app.modules.media.router import router as media_router
 from app.modules.users.router import router as users_router
 
@@ -74,6 +75,7 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(users_router, prefix="/api/v1")
 app.include_router(admin_router, prefix="/api/v1")
 app.include_router(courses_router, prefix="/api/v1")
+app.include_router(enrollments_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(media_router, prefix="/api/v1")
 
