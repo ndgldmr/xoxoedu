@@ -926,39 +926,39 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 **Backend:**
 
-- [ ] Migrations: `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks`
+- [x] Migrations: `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks`
 
-- [ ] `POST /api/v1/courses/{id}/enroll` — enroll in free course
+- [x] `POST /api/v1/courses/{id}/enroll` — enroll in free course
 
-- [ ] `DELETE /api/v1/enrollments/{id}` — unenroll
+- [x] `DELETE /api/v1/enrollments/{id}` — unenroll
 
-- [ ] `GET /api/v1/users/me/enrollments` — list student's enrollments
+- [x] `GET /api/v1/users/me/enrollments` — list student's enrollments
 
-- [ ] `POST /api/v1/lessons/{id}/progress` — save lesson progress (idempotent)
+- [x] `POST /api/v1/lessons/{id}/progress` — save lesson progress (idempotent)
 
-- [ ] `GET /api/v1/courses/{id}/progress` — get full course progress for current user
+- [x] `GET /api/v1/courses/{id}/progress` — get full course progress for current user
 
-- [ ] `GET /api/v1/users/me/continue` — return the next incomplete lesson per enrolled course
+- [x] `GET /api/v1/users/me/continue` — return the next incomplete lesson per enrolled course
 
-- [ ] `POST /api/v1/lessons/{id}/notes` — create/update personal note
+- [x] `POST /api/v1/lessons/{id}/notes` — create/update personal note
 
-- [ ] `GET /api/v1/lessons/{id}/notes` — get personal note
+- [x] `GET /api/v1/lessons/{id}/notes` — get personal note
 
-- [ ] `POST /api/v1/lessons/{id}/bookmark` — bookmark lesson
+- [x] `DELETE /api/v1/lessons/{id}/notes` — delete personal note
 
-- [ ] `DELETE /api/v1/lessons/{id}/bookmark` — remove bookmark
+- [x] `POST /api/v1/lessons/{id}/bookmark` — toggle bookmark (creates if absent, removes if present)
 
-- [ ] `GET /api/v1/users/me/bookmarks` — list all bookmarks
+- [x] `GET /api/v1/users/me/bookmarks` — list all bookmarks
 
 **Testing (Sprint 3):**
 
-- [ ] Unit tests: progress percentage calculation, enrollment eligibility, completion detection
+- [x] Unit tests: progress percentage calculation, enrollment eligibility, completion detection
 
-- [ ] Integration tests: enroll → mark lessons complete → course progress updates
+- [x] Integration tests: enroll → mark lessons complete → course progress updates
 
-- [ ] Integration tests: unenroll + re-enroll → prior progress preserved
+- [x] Integration tests: unenroll + re-enroll → prior progress preserved
 
-- [ ] Integration tests: idempotency — duplicate progress saves do not create duplicate records
+- [x] Integration tests: idempotency — duplicate progress saves do not create duplicate records
 
 ---
 
@@ -1436,9 +1436,13 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ---
 
-### Sprint 1 — Auth API
+### Sprint 3 — Auth + Course Structure + Enrollment & Progress
 
-**What's available:** Full authentication API — registration, email verification, login, token refresh, logout, password reset, Google OAuth2, and user profile management. Admin users can list, promote/demote, and delete accounts.
+**What's available:** The backend currently runs the full Sprint 1 through Sprint 3 API surface:
+
+- Authentication: registration, email verification, login, token refresh, logout, password reset, Google OAuth2, profile, session management, and admin user management
+- Course structure: categories, published course catalog, full course detail, search, and admin course/chapter/lesson/resource management
+- Student learning flows: enroll / unenroll, list enrollments, lesson progress tracking, course progress breakdown, continue-where-you-left-off, private lesson notes, and lesson bookmarks
 
 #### Prerequisites
 
@@ -1475,6 +1479,13 @@ docker compose up db redis -d
 uv run alembic upgrade head
 ```
 
+This applies all migrations through Sprint 3, including `0003_enrollment_progress.py` for:
+
+- `enrollments`
+- `lesson_progress`
+- `user_notes`
+- `user_bookmarks`
+
 #### 5. Create the first admin account
 
 ```bash
@@ -1492,6 +1503,8 @@ uv run uvicorn app.main:app --reload
 API is now running at `http://localhost:8000`.
 Interactive docs at `http://localhost:8000/api/docs`.
 
+At this point the API includes the Sprint 3 student workflow endpoints for enrollment, progress, notes, and bookmarks in addition to the earlier auth and course-management routes.
+
 #### 7. Start the Celery worker (required for emails)
 
 In a second terminal:
@@ -1508,11 +1521,15 @@ Unit tests (no database required):
 uv run pytest tests/unit/ --no-cov
 ```
 
+This now includes Sprint 3 business-logic coverage such as enrollment eligibility and progress calculation.
+
 Integration tests (requires Docker Postgres running on port 5432):
 
 ```bash
 uv run pytest tests/integration/ --no-cov
 ```
+
+This now includes Sprint 3 API coverage for enrollments, progress, notes, and bookmarks.
 
 Full suite with coverage:
 
@@ -1520,7 +1537,9 @@ Full suite with coverage:
 uv run pytest
 ```
 
-#### Available endpoints (Sprint 1)
+#### Available endpoints (through Sprint 3)
+
+**Auth & users**
 
 | Method | Endpoint | Description |
 | --- | --- | --- |
@@ -1542,6 +1561,43 @@ uv run pytest
 | `PATCH` | `/api/v1/admin/users/{id}/role` | Promote / demote a user (admin only) |
 | `DELETE` | `/api/v1/admin/users/{id}` | Delete a user (admin only) |
 | `GET` | `/health` | Health check |
+
+**Course catalog & authoring**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/categories` | List all categories |
+| `GET` | `/api/v1/courses` | List published courses |
+| `GET` | `/api/v1/courses/{slug}` | Course detail with chapters and lessons |
+| `GET` | `/api/v1/search?q=...` | Full-text search across published courses |
+| `POST` | `/api/v1/admin/courses` | Create a course |
+| `PATCH` | `/api/v1/admin/courses/{id}` | Update course fields or status |
+| `DELETE` | `/api/v1/admin/courses/{id}` | Archive a course |
+| `POST` | `/api/v1/admin/courses/{id}/chapters` | Add a chapter |
+| `PATCH` | `/api/v1/admin/chapters/{id}` | Update chapter title |
+| `DELETE` | `/api/v1/admin/chapters/{id}` | Delete chapter |
+| `PATCH` | `/api/v1/admin/courses/{id}/chapters/reorder` | Reorder chapters |
+| `POST` | `/api/v1/admin/chapters/{id}/lessons` | Add a lesson |
+| `PATCH` | `/api/v1/admin/lessons/{id}` | Update lesson |
+| `DELETE` | `/api/v1/admin/lessons/{id}` | Delete lesson |
+| `PATCH` | `/api/v1/admin/chapters/{id}/lessons/reorder` | Reorder lessons |
+| `POST` | `/api/v1/admin/lessons/{id}/resources` | Attach a resource to a lesson |
+
+**Enrollment & learning progress**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/courses/{id}/enroll` | Enroll in a free published course |
+| `DELETE` | `/api/v1/enrollments/{id}` | Unenroll while preserving progress |
+| `GET` | `/api/v1/users/me/enrollments` | List current user's enrollments |
+| `POST` | `/api/v1/lessons/{id}/progress` | Save or advance lesson progress |
+| `GET` | `/api/v1/courses/{id}/progress` | Full course progress breakdown |
+| `GET` | `/api/v1/users/me/continue` | Next incomplete lesson per active enrollment |
+| `POST` | `/api/v1/lessons/{id}/notes` | Create or update a private lesson note |
+| `GET` | `/api/v1/lessons/{id}/notes` | Fetch the current user's lesson note |
+| `DELETE` | `/api/v1/lessons/{id}/notes` | Delete the current user's lesson note |
+| `POST` | `/api/v1/lessons/{id}/bookmark` | Toggle lesson bookmark |
+| `GET` | `/api/v1/users/me/bookmarks` | List the current user's bookmarks |
 
 ---
 
@@ -1869,6 +1925,121 @@ GET /api/v1/search?q=python
 
 # Empty query is rejected
 GET /api/v1/search?q=    → 422 Unprocessable Entity
+```
+
+---
+
+#### Available endpoints (Sprint 3)
+
+**Enrollment (student-facing, requires `Authorization: Bearer <token>`)**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/courses/{id}/enroll` | Enroll in a free published course |
+| `DELETE` | `/api/v1/enrollments/{id}` | Unenroll (soft-delete; progress is preserved) |
+| `GET` | `/api/v1/users/me/enrollments` | List all enrollments (`?skip=`, `?limit=`) |
+
+**Progress**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/lessons/{id}/progress` | Save or advance lesson progress (idempotent upsert) |
+| `GET` | `/api/v1/courses/{id}/progress` | Full course progress breakdown with per-lesson detail |
+| `GET` | `/api/v1/users/me/continue` | Next incomplete lesson per active enrollment |
+
+**Notes**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/lessons/{id}/notes` | Create or update a private note on a lesson (upsert) |
+| `GET` | `/api/v1/lessons/{id}/notes` | Fetch the note on a lesson |
+| `DELETE` | `/api/v1/lessons/{id}/notes` | Delete the note on a lesson |
+
+**Bookmarks**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/lessons/{id}/bookmark` | Toggle bookmark — creates if absent, removes if present |
+| `GET` | `/api/v1/users/me/bookmarks` | List all bookmarks with lesson and course context (`?skip=`, `?limit=`) |
+
+#### Enrollment lifecycle
+
+A student's enrollment status moves through three states. The row is never hard-deleted, which preserves progress across unenroll / re-enroll cycles.
+
+```
+        enroll                 all lessons complete
+          │                           │
+          ▼                           ▼
+       active  ──────────────────► completed
+          │
+       unenroll
+          │
+          ▼
+      unenrolled
+          │
+       re-enroll (restores same row)
+          │
+          ▼
+       active
+```
+
+| Rule | Detail |
+| --- | --- |
+| Enrollable courses | Must be `published`, not archived, and `price_cents = 0` (paid gating is Sprint 5) |
+| Duplicate enroll | Returns `409 ALREADY_ENROLLED` |
+| Re-enroll | Restores the existing row to `active`; prior lesson progress is untouched |
+| Unenroll | Sets `status = unenrolled`; progress rows are never deleted |
+| Auto-complete | When `POST /progress` marks the last lesson as `completed`, the enrollment is automatically set to `completed` |
+
+#### Progress tracking
+
+```
+not_started ──► in_progress ──► completed
+```
+
+Status is **forward-only**: sending a lower-rank status in the payload is silently ignored while `watch_seconds` is still updated. This means a re-watch of a completed lesson won't reset its state.
+
+```bash
+# Mark a lesson in-progress with a watch position
+POST /api/v1/lessons/{id}/progress
+{"status": "in_progress", "watch_seconds": 120}
+
+# Mark complete
+POST /api/v1/lessons/{id}/progress
+{"status": "completed", "watch_seconds": 600}
+
+# Get full course breakdown
+GET /api/v1/courses/{id}/progress
+# → {"total_lessons": 5, "completed_lessons": 3, "progress_pct": 60.0, "lessons": [...]}
+```
+
+#### Enrollment & progress flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as API
+    participant D as Database
+
+    C->>A: POST /courses/{id}/enroll
+    A->>D: SELECT course (check published + free)
+    A->>D: SELECT enrollment (check for existing row)
+    alt No prior enrollment
+        A->>D: INSERT enrollment (status=active)
+    else Prior unenrolled enrollment
+        A->>D: UPDATE enrollment SET status=active
+    end
+    A-->>C: 201 {enrollment}
+
+    C->>A: POST /lessons/{id}/progress {status, watch_seconds}
+    A->>D: SELECT lesson → chapter → course_id
+    A->>D: SELECT enrollment WHERE status=active
+    A->>D: UPSERT lesson_progress (forward-only status)
+    alt All lessons now completed
+        A->>D: UPDATE enrollment SET status=completed
+    end
+    A-->>C: 200 {progress}
 ```
 
 ---

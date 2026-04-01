@@ -16,3 +16,14 @@ services:
       target: builder
     volumes:
       - ./app:/app/app
+
+  pgweb:
+    image: sosedoff/pgweb:latest
+    ports:
+      - "8081:8081"
+    environment:
+      PGWEB_DATABASE_URL: postgres://postgres:postgres@db:5432/xoxoedu?sslmode=disable
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
