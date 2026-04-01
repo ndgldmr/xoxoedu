@@ -1446,20 +1446,25 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ---
 
-### Sprint 4 — Auth + Course Structure + Enrollment & Progress + Quizzes & Assignments
+### Current state (through Sprint 4)
 
-**What's available:** The backend currently runs the full Sprint 1 through Sprint 4 API surface:
+**What's built:** The backend runs the full Sprint 1–4 API surface.
 
-- Authentication: registration, email verification, login, token refresh, logout, password reset, Google OAuth2, profile, session management, and admin user management
-- Course structure: categories, published course catalog, full course detail, search, and admin course/chapter/lesson/resource management
-- Student learning flows: enroll / unenroll, list enrollments, lesson progress tracking, course progress breakdown, continue-where-you-left-off, private lesson notes, and lesson bookmarks
-- Quizzes: admin creates quizzes with single-choice and multi-choice questions; students submit attempts (auto-scored); correct answers revealed after all attempts exhausted; TOCTOU-safe attempt counting
-- Assignments: admin creates assignments; students request a presigned Cloudflare R2 PUT URL, upload directly, then confirm; `scan_status` placeholder column ready for Sprint 12 virus scanning
+| Sprint | Feature area | Status |
+| --- | --- | --- |
+| S1 | Auth — registration, email verification, login, JWT + refresh tokens, Google OAuth2, password reset, session management | ✅ Complete |
+| S2 | Course structure — categories, courses, chapters, lessons, resources; full-text search; admin authoring | ✅ Complete |
+| S3 | Enrollment & progress — enroll/unenroll, lesson progress, course progress, continue-where-left-off, notes, bookmarks | ✅ Complete |
+| S4 | Quizzes & assignments — auto-scored multi-attempt quizzes; presigned R2 file-upload assignments | ✅ Complete |
+
+---
+
+### Setup
 
 #### Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) — `brew install uv`
-- [Docker](https://orbstack.dev) — for PostgreSQL and Redis
+- [Docker](https://orbstack.dev) — for PostgreSQL, Redis, and the optional pgweb DB browser
 
 #### 1. Install dependencies
 
@@ -1474,15 +1479,26 @@ uv sync --all-groups
 uv run scripts/setup_env.py
 ```
 
-This generates RSA keys and a secret key automatically, then prompts for the credentials that require external accounts (Google OAuth2, Resend). Have these ready:
+This generates RSA keys and a secret key automatically, then prompts for credentials that require external accounts. Have these ready:
 
-- **Google OAuth2** — `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` from [console.cloud.google.com](https://console.cloud.google.com) &gt; APIs & Services &gt; Credentials
-- **Resend** — `RESEND_API_KEY` from [resend.com/api-keys](https://resend.com/api-keys)
+| Variable | Where to get it |
+| --- | --- |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials |
+| `RESEND_API_KEY` | [resend.com/api-keys](https://resend.com/api-keys) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare dashboard → R2 → Manage R2 API Tokens (optional — needed only for assignment file uploads) |
+
+> The API starts without R2 credentials. File-upload endpoints return `500 UPLOAD_FAILED` if R2 is not configured.
 
 #### 3. Start infrastructure
 
 ```bash
 docker compose up db redis -d
+```
+
+To also spin up the pgweb database browser (available at `http://localhost:8081`):
+
+```bash
+docker compose up db redis pgweb -d
 ```
 
 #### 4. Run database migrations
@@ -1491,10 +1507,14 @@ docker compose up db redis -d
 uv run alembic upgrade head
 ```
 
-This applies all migrations through Sprint 4, including:
+This applies all four migrations:
 
-- `0003_enrollment_progress.py` — `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks`
-- `0004_quizzes_assignments.py` — `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
+| Migration | Tables created |
+| --- | --- |
+| `0001_initial_auth_tables` | `users`, `user_profiles`, `sessions`, `oauth_accounts` |
+| `0002_course_structure` | `categories`, `courses`, `chapters`, `lessons`, `lesson_resources` |
+| `0003_enrollment_progress` | `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks` |
+| `0004_quizzes_assignments` | `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions` |
 
 #### 5. Create the first admin account
 
@@ -1502,7 +1522,7 @@ This applies all migrations through Sprint 4, including:
 uv run scripts/create_admin.py admin@example.com yourpassword
 ```
 
-If the email already exists as a student it will be promoted to admin. Run this once after migrations.
+If the email already exists as a student it is promoted to admin. Run this once after migrations.
 
 #### 6. Start the API
 
@@ -1510,12 +1530,7 @@ If the email already exists as a student it will be promoted to admin. Run this 
 uv run uvicorn app.main:app --reload
 ```
 
-API is now running at `http://localhost:8000`.
-Interactive docs at `http://localhost:8000/api/docs`.
-
-At this point the API includes the Sprint 4 student workflow endpoints for enrollment, progress, notes, bookmarks, quizzes, and assignments in addition to the earlier auth and course-management routes.
-
-> **Cloudflare R2 (file uploads):** Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET` in `.env` to enable the presigned upload flow. The API starts without these values; file-upload endpoints return `UPLOAD_FAILED` if R2 is not configured.
+API is running at `http://localhost:8000`. Interactive docs at `http://localhost:8000/api/docs`.
 
 #### 7. Start the Celery worker (required for emails)
 
@@ -1525,7 +1540,9 @@ In a second terminal:
 uv run celery -A app.worker.celery_app worker --loglevel=info
 ```
 
-#### Running tests
+---
+
+### Running tests
 
 Unit tests (no database required):
 
@@ -1533,109 +1550,111 @@ Unit tests (no database required):
 uv run pytest tests/unit/ --no-cov
 ```
 
-This now includes Sprint 4 business-logic coverage: enrollment eligibility, progress calculation, quiz scoring (single-choice, multi-choice), and R2 URL generation.
+Covers: enrollment eligibility, progress rules, quiz scoring (single-choice, multi-choice), and R2 URL generation.
 
-Integration tests (requires Docker Postgres running on port 5432):
+Integration tests (requires Docker PostgreSQL on port 5432):
 
 ```bash
 uv run pytest tests/integration/ --no-cov
 ```
 
-This now includes Sprint 4 API coverage for enrollments, progress, notes, bookmarks, quizzes, and assignments.
+Covers: auth flows, course authoring, enrollments, progress, notes, bookmarks, quizzes, and assignments.
 
-Full suite with coverage:
+Full suite with coverage report:
 
 ```bash
 uv run pytest
 ```
 
-#### Available endpoints (through Sprint 4)
+---
+
+### All available endpoints
 
 **Auth & users**
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/auth/register` | Register with email + password |
-| `GET` | `/api/v1/auth/verify-email/{token}` | Verify email address |
-| `POST` | `/api/v1/auth/resend-verification` | Resend verification email |
-| `POST` | `/api/v1/auth/login` | Login — returns JWT + sets refresh cookie |
-| `POST` | `/api/v1/auth/refresh` | Rotate refresh token |
-| `POST` | `/api/v1/auth/logout` | Revoke session |
-| `POST` | `/api/v1/auth/forgot-password` | Send password reset email |
-| `POST` | `/api/v1/auth/reset-password/{token}` | Reset password |
-| `GET` | `/api/v1/auth/google` | Initiate Google OAuth2 flow |
-| `GET` | `/api/v1/auth/google/callback` | Google OAuth2 callback |
-| `GET` | `/api/v1/users/me` | Get current user profile |
-| `PATCH` | `/api/v1/users/me` | Update profile |
-| `GET` | `/api/v1/users/me/sessions` | List active sessions |
-| `DELETE` | `/api/v1/users/me/sessions/{id}` | Revoke a session |
-| `GET` | `/api/v1/admin/users` | List all users (admin only) |
-| `PATCH` | `/api/v1/admin/users/{id}/role` | Promote / demote a user (admin only) |
-| `DELETE` | `/api/v1/admin/users/{id}` | Delete a user (admin only) |
-| `GET` | `/health` | Health check |
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/auth/register` | — | Register with email + password |
+| `GET` | `/api/v1/auth/verify-email/{token}` | — | Verify email address |
+| `POST` | `/api/v1/auth/resend-verification` | — | Resend verification email |
+| `POST` | `/api/v1/auth/login` | — | Login — returns JWT + sets refresh cookie |
+| `POST` | `/api/v1/auth/refresh` | Cookie | Rotate refresh token |
+| `POST` | `/api/v1/auth/logout` | Cookie | Revoke current session |
+| `POST` | `/api/v1/auth/forgot-password` | — | Send password reset email |
+| `POST` | `/api/v1/auth/reset-password/{token}` | — | Reset password |
+| `GET` | `/api/v1/auth/google` | — | Initiate Google OAuth2 flow |
+| `GET` | `/api/v1/auth/google/callback` | — | Google OAuth2 callback |
+| `GET` | `/api/v1/users/me` | Student | Get current user profile |
+| `PATCH` | `/api/v1/users/me` | Student | Update profile |
+| `GET` | `/api/v1/users/me/sessions` | Student | List active sessions |
+| `DELETE` | `/api/v1/users/me/sessions/{id}` | Student | Revoke a session |
+| `GET` | `/api/v1/admin/users` | Admin | List all users |
+| `PATCH` | `/api/v1/admin/users/{id}/role` | Admin | Promote / demote a user |
+| `DELETE` | `/api/v1/admin/users/{id}` | Admin | Delete a user |
+| `GET` | `/health` | — | Liveness probe |
 
 **Course catalog & authoring**
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/v1/categories` | List all categories |
-| `GET` | `/api/v1/courses` | List published courses |
-| `GET` | `/api/v1/courses/{slug}` | Course detail with chapters and lessons |
-| `GET` | `/api/v1/search?q=...` | Full-text search across published courses |
-| `POST` | `/api/v1/admin/courses` | Create a course |
-| `PATCH` | `/api/v1/admin/courses/{id}` | Update course fields or status |
-| `DELETE` | `/api/v1/admin/courses/{id}` | Archive a course |
-| `POST` | `/api/v1/admin/courses/{id}/chapters` | Add a chapter |
-| `PATCH` | `/api/v1/admin/chapters/{id}` | Update chapter title |
-| `DELETE` | `/api/v1/admin/chapters/{id}` | Delete chapter |
-| `PATCH` | `/api/v1/admin/courses/{id}/chapters/reorder` | Reorder chapters |
-| `POST` | `/api/v1/admin/chapters/{id}/lessons` | Add a lesson |
-| `PATCH` | `/api/v1/admin/lessons/{id}` | Update lesson |
-| `DELETE` | `/api/v1/admin/lessons/{id}` | Delete lesson |
-| `PATCH` | `/api/v1/admin/chapters/{id}/lessons/reorder` | Reorder lessons |
-| `POST` | `/api/v1/admin/lessons/{id}/resources` | Attach a resource to a lesson |
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| `GET` | `/api/v1/categories` | — | List all categories |
+| `GET` | `/api/v1/courses` | — | List published courses (`?category_id=`, `?level=`, `?max_price=`, `?skip=`, `?limit=`) |
+| `GET` | `/api/v1/courses/{slug}` | — | Course detail with full chapter and lesson tree |
+| `GET` | `/api/v1/search?q=...` | — | Full-text search across published courses |
+| `POST` | `/api/v1/admin/courses` | Admin | Create a course |
+| `PATCH` | `/api/v1/admin/courses/{id}` | Admin | Update course fields or status |
+| `DELETE` | `/api/v1/admin/courses/{id}` | Admin | Archive a course |
+| `POST` | `/api/v1/admin/courses/{id}/chapters` | Admin | Add a chapter |
+| `PATCH` | `/api/v1/admin/chapters/{id}` | Admin | Update chapter title |
+| `DELETE` | `/api/v1/admin/chapters/{id}` | Admin | Delete chapter |
+| `PATCH` | `/api/v1/admin/courses/{id}/chapters/reorder` | Admin | Reorder chapters |
+| `POST` | `/api/v1/admin/chapters/{id}/lessons` | Admin | Add a lesson |
+| `PATCH` | `/api/v1/admin/lessons/{id}` | Admin | Update lesson |
+| `DELETE` | `/api/v1/admin/lessons/{id}` | Admin | Delete lesson |
+| `PATCH` | `/api/v1/admin/chapters/{id}/lessons/reorder` | Admin | Reorder lessons |
+| `POST` | `/api/v1/admin/lessons/{id}/resources` | Admin | Attach a resource to a lesson |
 
 **Enrollment & learning progress**
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/courses/{id}/enroll` | Enroll in a free published course |
-| `DELETE` | `/api/v1/enrollments/{id}` | Unenroll while preserving progress |
-| `GET` | `/api/v1/users/me/enrollments` | List current user's enrollments |
-| `POST` | `/api/v1/lessons/{id}/progress` | Save or advance lesson progress |
-| `GET` | `/api/v1/courses/{id}/progress` | Full course progress breakdown |
-| `GET` | `/api/v1/users/me/continue` | Next incomplete lesson per active enrollment |
-| `POST` | `/api/v1/lessons/{id}/notes` | Create or update a private lesson note |
-| `GET` | `/api/v1/lessons/{id}/notes` | Fetch the current user's lesson note |
-| `DELETE` | `/api/v1/lessons/{id}/notes` | Delete the current user's lesson note |
-| `POST` | `/api/v1/lessons/{id}/bookmark` | Toggle lesson bookmark |
-| `GET` | `/api/v1/users/me/bookmarks` | List the current user's bookmarks |
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/courses/{id}/enroll` | Student | Enroll in a free published course |
+| `DELETE` | `/api/v1/enrollments/{id}` | Student | Unenroll while preserving progress |
+| `GET` | `/api/v1/users/me/enrollments` | Student | List enrollments (`?skip=`, `?limit=`) |
+| `POST` | `/api/v1/lessons/{id}/progress` | Student | Save or advance lesson progress (upsert) |
+| `GET` | `/api/v1/courses/{id}/progress` | Student | Full course progress breakdown |
+| `GET` | `/api/v1/users/me/continue` | Student | Next incomplete lesson per active enrollment |
+| `POST` | `/api/v1/lessons/{id}/notes` | Student | Create or update a private lesson note (upsert) |
+| `GET` | `/api/v1/lessons/{id}/notes` | Student | Fetch the note on a lesson |
+| `DELETE` | `/api/v1/lessons/{id}/notes` | Student | Delete the note on a lesson |
+| `POST` | `/api/v1/lessons/{id}/bookmark` | Student | Toggle bookmark (creates if absent, removes if present) |
+| `GET` | `/api/v1/users/me/bookmarks` | Student | List bookmarks (`?skip=`, `?limit=`) |
 
 **Quizzes**
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/quizzes/` | Create quiz with questions (admin only) |
-| `GET` | `/api/v1/quizzes/{id}` | Get quiz — correct answers masked until all attempts used |
-| `POST` | `/api/v1/quizzes/{id}/submit` | Submit one attempt; auto-scores single/multi-choice |
-| `GET` | `/api/v1/quizzes/{id}/submissions` | List student's attempts for a quiz |
-| `GET` | `/api/v1/quizzes/submissions/{id}` | Single submission detail |
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/quizzes/` | Admin | Create quiz with questions |
+| `GET` | `/api/v1/quizzes/{id}` | Student | Get quiz — correct answers masked until all attempts used |
+| `POST` | `/api/v1/quizzes/{id}/submit` | Student | Submit one attempt; auto-scores single/multi-choice |
+| `GET` | `/api/v1/quizzes/{id}/submissions` | Student | List own attempts for a quiz |
+| `GET` | `/api/v1/quizzes/submissions/{id}` | Student | Get one submission |
 
 **Assignments & file uploads**
 
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/assignments/` | Create assignment (admin only) |
-| `GET` | `/api/v1/assignments/{id}` | Get assignment detail |
-| `POST` | `/api/v1/assignments/{id}/upload` | Request presigned R2 PUT URL; creates submission row |
-| `POST` | `/api/v1/assignments/submissions/{id}/confirm` | Stamp `submitted_at` after direct upload completes |
-| `GET` | `/api/v1/assignments/{id}/submissions` | List student's submissions for an assignment |
-
-> **Upload flow:** `POST /upload` → PUT file bytes to `upload_url` directly → `POST /confirm`. The backend never proxies file bytes.
+| Method | Endpoint | Auth | Description |
+| --- | --- | --- | --- |
+| `POST` | `/api/v1/assignments/` | Admin | Create assignment |
+| `GET` | `/api/v1/assignments/{id}` | Student | Get assignment detail |
+| `POST` | `/api/v1/assignments/{id}/upload` | Student | Request presigned R2 PUT URL; creates submission row |
+| `POST` | `/api/v1/assignments/submissions/{id}/confirm` | Student | Stamp `submitted_at` after direct upload completes |
+| `GET` | `/api/v1/assignments/{id}/submissions` | Student | List own submissions for an assignment |
 
 ---
 
-#### How it works
+### How it works
+
+#### Sprint 1 — Authentication
 
 ##### Registration & email verification
 
@@ -1888,49 +1907,9 @@ A session is **active** when `revoked_at IS NULL` and `expires_at > now()`. The 
 
 ---
 
-### Sprint 2 — Course Structure API
+#### Sprint 2 — Course Structure
 
-**What's available:** Admins can create and manage courses with chapters, lessons, and file resources. Students can browse published courses, view full course detail, and search by keyword.
-
-#### New in Sprint 2
-
-No new infrastructure required — Sprint 2 runs against the same stack as Sprint 1.
-
-Run the new migration after pulling:
-
-```bash
-uv run alembic upgrade head
-```
-
-#### Available endpoints (Sprint 2)
-
-**Public (student-facing)**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `GET` | `/api/v1/categories` | List all categories |
-| `GET` | `/api/v1/courses` | List published courses (`?category_id=`, `?level=`, `?max_price=`, `?skip=`, `?limit=`) |
-| `GET` | `/api/v1/courses/{slug}` | Course detail with full chapter and lesson tree |
-| `GET` | `/api/v1/search?q=...` | Full-text search across published courses |
-
-**Admin (course authoring)**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/admin/courses` | Create a course (slug auto-generated from title) |
-| `PATCH` | `/api/v1/admin/courses/{id}` | Update course fields or status |
-| `DELETE` | `/api/v1/admin/courses/{id}` | Archive course (soft-delete) |
-| `POST` | `/api/v1/admin/courses/{id}/chapters` | Add a chapter (position auto-assigned) |
-| `PATCH` | `/api/v1/admin/chapters/{id}` | Update chapter title |
-| `DELETE` | `/api/v1/admin/chapters/{id}` | Delete chapter |
-| `PATCH` | `/api/v1/admin/courses/{id}/chapters/reorder` | Reorder chapters — `{"ids": [...]}` in desired order |
-| `POST` | `/api/v1/admin/chapters/{id}/lessons` | Add a lesson (position auto-assigned) |
-| `PATCH` | `/api/v1/admin/lessons/{id}` | Update lesson |
-| `DELETE` | `/api/v1/admin/lessons/{id}` | Delete lesson |
-| `PATCH` | `/api/v1/admin/chapters/{id}/lessons/reorder` | Reorder lessons — `{"ids": [...]}` in desired order |
-| `POST` | `/api/v1/admin/lessons/{id}/resources` | Attach a file resource to a lesson |
-
-#### Course lifecycle
+##### Course lifecycle
 
 Courses move through three statuses. The `slug` is locked after a course is published to protect external links.
 
@@ -1949,7 +1928,7 @@ draft ──► published ──► archived
 | `archived → published` | Yes |
 | Changing `slug` on a published course | No — returns `409 SLUG_IMMUTABLE` |
 
-#### Full-text search
+##### Full-text search
 
 The `search_vector` column on `courses` is a PostgreSQL `TSVECTOR GENERATED ALWAYS AS STORED` column computed from `title` and `description`. Searches use `plainto_tsquery('english', q)` and results are ranked by `ts_rank`. Only published, non-archived courses are returned.
 
@@ -1963,40 +1942,9 @@ GET /api/v1/search?q=    → 422 Unprocessable Entity
 
 ---
 
-#### Available endpoints (Sprint 3)
+#### Sprint 3 — Enrollment & Progress
 
-**Enrollment (student-facing, requires `Authorization: Bearer <token>`)**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/courses/{id}/enroll` | Enroll in a free published course |
-| `DELETE` | `/api/v1/enrollments/{id}` | Unenroll (soft-delete; progress is preserved) |
-| `GET` | `/api/v1/users/me/enrollments` | List all enrollments (`?skip=`, `?limit=`) |
-
-**Progress**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/lessons/{id}/progress` | Save or advance lesson progress (idempotent upsert) |
-| `GET` | `/api/v1/courses/{id}/progress` | Full course progress breakdown with per-lesson detail |
-| `GET` | `/api/v1/users/me/continue` | Next incomplete lesson per active enrollment |
-
-**Notes**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/lessons/{id}/notes` | Create or update a private note on a lesson (upsert) |
-| `GET` | `/api/v1/lessons/{id}/notes` | Fetch the note on a lesson |
-| `DELETE` | `/api/v1/lessons/{id}/notes` | Delete the note on a lesson |
-
-**Bookmarks**
-
-| Method | Endpoint | Description |
-| --- | --- | --- |
-| `POST` | `/api/v1/lessons/{id}/bookmark` | Toggle bookmark — creates if absent, removes if present |
-| `GET` | `/api/v1/users/me/bookmarks` | List all bookmarks with lesson and course context (`?skip=`, `?limit=`) |
-
-#### Enrollment lifecycle
+##### Enrollment lifecycle
 
 A student's enrollment status moves through three states. The row is never hard-deleted, which preserves progress across unenroll / re-enroll cycles.
 
@@ -2025,7 +1973,7 @@ A student's enrollment status moves through three states. The row is never hard-
 | Unenroll | Sets `status = unenrolled`; progress rows are never deleted |
 | Auto-complete | When `POST /progress` marks the last lesson as `completed`, the enrollment is automatically set to `completed` |
 
-#### Progress tracking
+##### Progress tracking
 
 ```
 not_started ──► in_progress ──► completed
@@ -2047,7 +1995,7 @@ GET /api/v1/courses/{id}/progress
 # → {"total_lessons": 5, "completed_lessons": 3, "progress_pct": 60.0, "lessons": [...]}
 ```
 
-#### Enrollment & progress flow
+##### Enrollment & progress flow
 
 ```mermaid
 sequenceDiagram
@@ -2077,6 +2025,72 @@ sequenceDiagram
 ```
 
 ---
+
+#### Sprint 4 — Quizzes & Assignments
+
+##### Quiz flow
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as API
+    participant D as Database
+
+    C->>A: GET /quizzes/{id}
+    A->>D: SELECT quiz + questions
+    Note over A: correct_answers masked → []
+    A-->>C: 200 {quiz, questions (answers hidden)}
+
+    C->>A: POST /quizzes/{id}/submit {answers}
+    A->>D: COUNT existing attempts for user
+    alt attempts_used >= max_attempts
+        A-->>C: 409 MAX_ATTEMPTS_EXCEEDED
+    else attempts remaining
+        A->>A: Score answers (pure functions)
+        A->>D: INSERT quiz_submission (attempt_number, score, passed)
+        Note over A: Reveal answers if this was the final attempt
+        A-->>C: 201 {score, max_score, passed, questions (answers revealed if final)}
+    end
+```
+
+| Rule | Detail |
+| --- | --- |
+| Scoring | `single_choice`: full points for exactly one correct selection. `multi_choice`: full points only when the selected set exactly matches the correct set — no partial credit |
+| Answer masking | `correct_answers` is always `[]` in the response until all attempts are exhausted |
+| Attempt guard | `UniqueConstraint(user_id, quiz_id, attempt_number)` prevents double-submission under concurrent requests |
+
+##### Assignment file upload flow
+
+The backend never proxies file bytes. The client uploads directly to Cloudflare R2 via a presigned PUT URL.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as Client
+    participant A as API
+    participant R as Cloudflare R2
+    participant D as Database
+
+    C->>A: POST /assignments/{id}/upload {file_name, mime_type, file_size}
+    A->>A: Validate extension + file size against assignment rules
+    A->>R: Generate presigned PUT URL (valid 5 min)
+    A->>D: INSERT assignment_submission (scan_status=pending, submitted_at=null)
+    A-->>C: 201 {submission_id, upload_url, expires_at}
+
+    C->>R: PUT <file bytes> to upload_url
+    R-->>C: 200 OK
+
+    C->>A: POST /assignments/submissions/{id}/confirm
+    A->>D: UPDATE submission SET submitted_at=now(), upload_url_expires_at=null
+    A-->>C: 200 {submission (submitted_at populated)}
+```
+
+| Field | Detail |
+| --- | --- |
+| `scan_status` | Defaults to `"pending"`; virus scan wired in Sprint 12 |
+| Extension check | Service rejects uploads with disallowed extensions before generating the presigned URL |
+| `submitted_at` | `null` until the student calls `/confirm`; indicates an incomplete upload |
 
 ---
 
