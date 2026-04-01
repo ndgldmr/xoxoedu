@@ -1,3 +1,5 @@
+"""Business logic for user profile management and session administration."""
+
 import uuid
 from datetime import UTC, datetime
 
@@ -11,6 +13,19 @@ from app.modules.users.schemas import UserUpdateIn
 
 
 async def update_me(db: AsyncSession, user: User, body: UserUpdateIn) -> User:
+    """Update profile fields for the authenticated user.
+
+    Creates a ``UserProfile`` row on the fly if one does not yet exist (e.g.
+    for OAuth-created accounts that skipped the registration form).
+
+    Args:
+        db: Async database session.
+        user: The currently authenticated ``User`` ORM instance.
+        body: Partial update payload; ``None`` fields are left unchanged.
+
+    Returns:
+        The refreshed ``User`` instance with updated profile data.
+    """
     if not user.profile:
         from app.db.models.user import UserProfile
 
@@ -32,6 +47,15 @@ async def update_me(db: AsyncSession, user: User, body: UserUpdateIn) -> User:
 
 
 async def list_sessions(db: AsyncSession, user_id: uuid.UUID) -> list[Session]:
+    """Return all active (non-revoked, non-expired) sessions for a user.
+
+    Args:
+        db: Async database session.
+        user_id: UUID of the user whose sessions to list.
+
+    Returns:
+        A list of ``Session`` ORM instances ordered by the database default.
+    """
     now = datetime.now(UTC)
     result = await db.execute(
         select(Session).where(
@@ -44,6 +68,17 @@ async def list_sessions(db: AsyncSession, user_id: uuid.UUID) -> list[Session]:
 
 
 async def revoke_session(db: AsyncSession, user: User, session_id: uuid.UUID) -> None:
+    """Revoke a specific session, enforcing that the caller owns it.
+
+    Args:
+        db: Async database session.
+        user: The authenticated user attempting the revocation.
+        session_id: UUID of the session to revoke.
+
+    Raises:
+        SessionNotFound: If no session with that ID exists.
+        Forbidden: If the session belongs to a different user.
+    """
     session = await db.get(Session, session_id)
     if not session:
         raise SessionNotFound()

@@ -1,3 +1,5 @@
+"""FastAPI router for public course-browsing and full-text search endpoints."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -19,6 +21,7 @@ router = APIRouter(tags=["courses"])
 
 @router.get("/categories")
 async def list_categories(db: AsyncSession = Depends(get_db)) -> dict:
+    """List all course categories ordered alphabetically."""
     cats = await service.list_categories(db)
     return ok([CategoryOut.model_validate(c).model_dump() for c in cats])
 
@@ -34,6 +37,7 @@ async def list_courses(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> dict:
+    """List published courses with optional category, level, and price filters."""
     courses, total = await service.list_courses(db, category_id, level, max_price, skip, limit)
     return ok(
         [CourseListItem.model_validate(c).model_dump() for c in courses],
@@ -43,6 +47,7 @@ async def list_courses(
 
 @router.get("/courses/{slug}")
 async def get_course(slug: str, db: AsyncSession = Depends(get_db)) -> dict:
+    """Fetch the full course detail tree (chapters, lessons, resources) by slug."""
     course = await service.get_course_by_slug(db, slug)
     return ok(CourseDetail.model_validate(course).model_dump())
 
@@ -56,6 +61,7 @@ async def search(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
 ) -> dict:
+    """Full-text search over published courses, ranked by relevance."""
     courses, total = await service.search_courses(db, q, skip, limit)
     return ok(
         [CourseListItem.model_validate(c).model_dump() for c in courses],

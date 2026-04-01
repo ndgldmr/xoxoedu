@@ -11,6 +11,12 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 
 def main() -> None:
+    """Generate an RSA-2048 keypair and print the .env-ready values to stdout.
+
+    Both keys are serialised to PEM, then newlines are escaped to ``\\n`` so
+    they can be stored as single-line environment variable values.  The output
+    is ready to paste directly into a ``.env`` file.
+    """
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,

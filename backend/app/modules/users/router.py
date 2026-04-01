@@ -1,3 +1,5 @@
+"""FastAPI router for authenticated user self-service endpoints."""
+
 import uuid
 
 from fastapi import APIRouter, Depends
@@ -15,6 +17,7 @@ router = APIRouter(prefix="/users", tags=["users"])
 
 @router.get("/me")
 async def get_me(user=Depends(get_current_verified_user)) -> dict:
+    """Return the authenticated user's full profile."""
     return ok(UserOut.model_validate(user).model_dump())
 
 
@@ -24,6 +27,7 @@ async def update_me(
     user=Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Partially update the authenticated user's profile fields."""
     updated = await service.update_me(db, user, body)
     return ok(UserOut.model_validate(updated).model_dump())
 
@@ -32,6 +36,7 @@ async def update_me(
 async def list_sessions(
     user=Depends(get_current_verified_user), db: AsyncSession = Depends(get_db)
 ) -> dict:
+    """List all active sessions for the authenticated user."""
     sessions = await service.list_sessions(db, user.id)
     return ok([SessionOut.model_validate(s).model_dump() for s in sessions])
 
@@ -42,4 +47,5 @@ async def revoke_session(
     user=Depends(get_current_verified_user),
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Revoke a specific session by ID, preventing further token refreshes from it."""
     await service.revoke_session(db, user, session_id)

@@ -1,3 +1,5 @@
+"""FastAPI router for admin-only user and course-management endpoints."""
+
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -37,6 +39,7 @@ async def list_users(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
 ) -> dict:
+    """List all users with pagination metadata."""
     users, total = await service.list_users(db, skip, limit)
     return ok(
         [UserOut.model_validate(u).model_dump() for u in users],
@@ -50,6 +53,7 @@ async def update_user_role(
     body: RoleUpdateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Change the role of a user."""
     user = await service.update_role(db, user_id, body.role.value)
     return ok(UserOut.model_validate(user).model_dump())
 
@@ -59,6 +63,7 @@ async def delete_user(
     user_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Permanently delete a user account."""
     await service.delete_user(db, user_id)
 
 
@@ -70,6 +75,7 @@ async def create_course(
     db: AsyncSession = Depends(get_db),
     current_user: User = require_role(Role.ADMIN),
 ) -> dict:
+    """Create a new course in draft status."""
     course = await course_service.create_course(db, body, created_by=current_user.id)
     return ok(CourseDetail.model_validate(course).model_dump())
 
@@ -80,6 +86,7 @@ async def update_course(
     body: CourseUpdateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Update course metadata or status, subject to valid status transitions."""
     course = await course_service.update_course(db, course_id, body)
     return ok(CourseDetail.model_validate(course).model_dump())
 
@@ -89,6 +96,7 @@ async def archive_course(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Archive a course, removing it from public listings."""
     await course_service.archive_course(db, course_id)
 
 
@@ -100,6 +108,7 @@ async def create_chapter(
     body: ChapterCreateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Append a new chapter to a course, auto-assigning the next position."""
     chapter = await course_service.create_chapter(db, course_id, body)
     return ok(ChapterOut.model_validate(chapter).model_dump())
 
@@ -110,6 +119,7 @@ async def update_chapter(
     body: ChapterUpdateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Update a chapter's title."""
     chapter = await course_service.update_chapter(db, chapter_id, body)
     return ok(ChapterOut.model_validate(chapter).model_dump())
 
@@ -119,6 +129,7 @@ async def delete_chapter(
     chapter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a chapter and all its lessons."""
     await course_service.delete_chapter(db, chapter_id)
 
 
@@ -128,6 +139,7 @@ async def reorder_chapters(
     body: ReorderIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Reorder a course's chapters by supplying the complete ordered list of chapter IDs."""
     chapters = await course_service.reorder_chapters(db, course_id, body.ids)
     return ok([ChapterOut.model_validate(c).model_dump() for c in chapters])
 
@@ -140,6 +152,7 @@ async def create_lesson(
     body: LessonCreateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Append a new lesson to a chapter, auto-assigning the next position."""
     lesson = await course_service.create_lesson(db, chapter_id, body)
     return ok(LessonOut.model_validate(lesson).model_dump())
 
@@ -150,6 +163,7 @@ async def update_lesson(
     body: LessonUpdateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Partially update a lesson's content or metadata."""
     lesson = await course_service.update_lesson(db, lesson_id, body)
     return ok(LessonOut.model_validate(lesson).model_dump())
 
@@ -159,6 +173,7 @@ async def delete_lesson(
     lesson_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
 ) -> None:
+    """Delete a lesson and its attached resources."""
     await course_service.delete_lesson(db, lesson_id)
 
 
@@ -168,6 +183,7 @@ async def reorder_lessons(
     body: ReorderIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Reorder a chapter's lessons by supplying the complete ordered list of lesson IDs."""
     lessons = await course_service.reorder_lessons(db, chapter_id, body.ids)
     return ok([LessonOut.model_validate(lesson).model_dump() for lesson in lessons])
 
@@ -180,5 +196,6 @@ async def attach_resource(
     body: ResourceCreateIn,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
+    """Attach a downloadable resource file to a lesson."""
     resource = await course_service.attach_resource(db, lesson_id, body)
     return ok(ResourceOut.model_validate(resource).model_dump())
