@@ -1,4 +1,4 @@
-"""API router for assignment creation, retrieval, and file submissions."""
+"""API router for assignment retrieval and file submissions (student-facing endpoints)."""
 
 import uuid
 
@@ -9,29 +9,9 @@ from app.core.rbac import Role, require_role
 from app.core.responses import ok
 from app.db.session import get_db
 from app.modules.assignments import service
-from app.modules.assignments.schemas import AssignmentIn, UploadRequestIn
+from app.modules.assignments.schemas import UploadRequestIn
 
 router = APIRouter(prefix="/assignments", tags=["assignments"])
-
-
-@router.post("/", status_code=201)
-async def create_assignment(
-    data: AssignmentIn,
-    db: AsyncSession = Depends(get_db),
-    current_user=require_role(Role.ADMIN),
-) -> dict:
-    """Create an assignment on a lesson (admin only).
-
-    Args:
-        data: Assignment creation payload.
-        db: Injected async database session.
-        current_user: Authenticated admin user from the JWT.
-
-    Returns:
-        The created ``AssignmentOut`` wrapped in the standard response envelope.
-    """
-    assignment = await service.create_assignment(db, data)
-    return ok(assignment.model_dump())
 
 
 @router.get("/{assignment_id}")

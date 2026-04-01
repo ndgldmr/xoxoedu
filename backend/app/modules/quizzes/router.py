@@ -1,4 +1,4 @@
-"""API router for quiz creation, retrieval, and submission."""
+"""API router for quiz retrieval and submission (student-facing endpoints)."""
 
 import uuid
 
@@ -9,29 +9,9 @@ from app.core.rbac import Role, require_role
 from app.core.responses import ok
 from app.db.session import get_db
 from app.modules.quizzes import service
-from app.modules.quizzes.schemas import QuizIn, SubmitQuizIn
+from app.modules.quizzes.schemas import SubmitQuizIn
 
 router = APIRouter(prefix="/quizzes", tags=["quizzes"])
-
-
-@router.post("/", status_code=201)
-async def create_quiz(
-    data: QuizIn,
-    db: AsyncSession = Depends(get_db),
-    current_user=require_role(Role.ADMIN),
-) -> dict:
-    """Create a quiz with questions on a lesson (admin only).
-
-    Args:
-        data: Quiz creation payload including questions.
-        db: Injected async database session.
-        current_user: Authenticated admin user from the JWT.
-
-    Returns:
-        The created ``QuizOut`` wrapped in the standard response envelope.
-    """
-    quiz = await service.create_quiz(db, data)
-    return ok(quiz.model_dump())
 
 
 @router.get("/submissions/{submission_id}")

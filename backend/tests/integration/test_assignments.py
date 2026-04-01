@@ -55,7 +55,7 @@ async def _make_lesson(db: AsyncSession, created_by: uuid.UUID) -> Lesson:
         chapter_id=chapter.id,
         title="Lesson 1",
         position=1,
-        kind="video",
+        type="video",
         is_free_preview=False,
     )
     db.add(lesson)
@@ -100,7 +100,7 @@ async def test_create_assignment_admin_ok(client: AsyncClient, db: AsyncSession)
         "allowed_extensions": ["pdf"],
     }
     resp = await client.post(
-        "/api/v1/assignments/", json=payload, headers=_auth(token)
+        "/api/v1/admin/assignments", json=payload, headers=_auth(token)
     )
     assert resp.status_code == 201
     data = resp.json()["data"]
@@ -119,7 +119,7 @@ async def test_create_assignment_student_forbidden(
         "instructions": ".",
     }
     resp = await client.post(
-        "/api/v1/assignments/", json=payload, headers=_auth(token)
+        "/api/v1/admin/assignments", json=payload, headers=_auth(token)
     )
     assert resp.status_code == 403
 

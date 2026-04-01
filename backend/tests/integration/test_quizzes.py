@@ -5,6 +5,7 @@ import uuid
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.security import create_access_token, hash_password
 from app.db.models.course import Chapter, Course, Lesson
@@ -51,7 +52,7 @@ async def _make_lesson(db: AsyncSession, created_by: uuid.UUID) -> Lesson:
         chapter_id=chapter.id,
         title="Lesson 1",
         position=1,
-        kind="video",
+        type="video",
         is_free_preview=False,
     )
     db.add(lesson)
@@ -80,8 +81,12 @@ async def _make_quiz(db: AsyncSession, lesson_id: uuid.UUID, max_attempts: int =
         )
     )
     await db.commit()
-    await db.refresh(quiz)
-    return quiz
+    # Eagerly load questions so the relationship is accessible outside the session.
+    from sqlalchemy import select as sa_select
+    result = await db.execute(
+        sa_select(Quiz).where(Quiz.id == quiz.id).options(selectinload(Quiz.questions))
+    )
+    return result.scalar_one()
 
 
 def _auth(token: str) -> dict:
@@ -111,7 +116,7 @@ async def test_create_quiz_admin_ok(client: AsyncClient, db: AsyncSession) -> No
             }
         ],
     }
-    resp = await client.post("/api/v1/quizzes/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/admin/quizzes", json=payload, headers=_auth(token))
     assert resp.status_code == 201
     data = resp.json()["data"]
     assert data["title"] == "Sprint Quiz"
@@ -136,7 +141,7 @@ async def test_create_quiz_student_forbidden(client: AsyncClient, db: AsyncSessi
             }
         ],
     }
-    resp = await client.post("/api/v1/quizzes/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/admin/quizzes", json=payload, headers=_auth(token))
     assert resp.status_code == 403
 
 

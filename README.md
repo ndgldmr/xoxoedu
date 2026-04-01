@@ -972,7 +972,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [x] Migrations: `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
 
-- [x] `POST /api/v1/quizzes/` — create quiz with questions (admin only)
+- [x] `POST /api/v1/admin/quizzes` — create quiz with questions (admin only)
 
 - [x] `GET /api/v1/quizzes/{id}` — get quiz (correct answers masked until all attempts exhausted)
 
@@ -982,7 +982,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [x] `GET /api/v1/quizzes/submissions/{id}` — single submission detail
 
-- [x] `POST /api/v1/assignments/` — create assignment (admin only)
+- [x] `POST /api/v1/admin/assignments` — create assignment (admin only)
 
 - [x] `GET /api/v1/assignments/{id}` — get assignment detail
 
@@ -1634,7 +1634,7 @@ uv run pytest
 
 | Method | Endpoint | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/quizzes/` | Admin | Create quiz with questions |
+| `POST` | `/api/v1/admin/quizzes` | Admin | Create quiz with questions |
 | `GET` | `/api/v1/quizzes/{id}` | Student | Get quiz — correct answers masked until all attempts used |
 | `POST` | `/api/v1/quizzes/{id}/submit` | Student | Submit one attempt; auto-scores single/multi-choice |
 | `GET` | `/api/v1/quizzes/{id}/submissions` | Student | List own attempts for a quiz |
@@ -1644,7 +1644,7 @@ uv run pytest
 
 | Method | Endpoint | Auth | Description |
 | --- | --- | --- | --- |
-| `POST` | `/api/v1/assignments/` | Admin | Create assignment |
+| `POST` | `/api/v1/admin/assignments` | Admin | Create assignment |
 | `GET` | `/api/v1/assignments/{id}` | Student | Get assignment detail |
 | `POST` | `/api/v1/assignments/{id}/upload` | Student | Request presigned R2 PUT URL; creates submission row |
 | `POST` | `/api/v1/assignments/submissions/{id}/confirm` | Student | Stamp `submitted_at` after direct upload completes |
