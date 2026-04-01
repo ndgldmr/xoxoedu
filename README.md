@@ -970,39 +970,47 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 **Backend:**
 
-- [ ] Migrations: `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
+- [x] Migrations: `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
 
-- [ ] `POST /api/v1/lessons/{id}/quiz` — create quiz
+- [x] `POST /api/v1/quizzes/` — create quiz with questions (admin only)
 
-- [ ] `GET /api/v1/quizzes/{id}` — get quiz (questions shuffled if configured; no correct answers exposed)
+- [x] `GET /api/v1/quizzes/{id}` — get quiz (correct answers masked until all attempts exhausted)
 
-- [ ] `POST /api/v1/quizzes/{id}/submit` — submit quiz; auto-score objective questions
+- [x] `POST /api/v1/quizzes/{id}/submit` — submit quiz; auto-score single-choice and multi-choice questions
 
-- [ ] `GET /api/v1/quizzes/{id}/submissions` — student's submission history
+- [x] `GET /api/v1/quizzes/{id}/submissions` — student's submission history
 
-- [ ] `POST /api/v1/lessons/{id}/assignment` — create assignment
+- [x] `GET /api/v1/quizzes/submissions/{id}` — single submission detail
 
-- [ ] `GET /api/v1/assignments/{id}` — get assignment detail
+- [x] `POST /api/v1/assignments/` — create assignment (admin only)
 
-- [ ] `POST /api/v1/assignments/{id}/submit` — submit assignment (text or file)
+- [x] `GET /api/v1/assignments/{id}` — get assignment detail
 
-- [ ] File upload: presigned S3 URL flow (`POST /api/v1/media/upload-url`)
+- [x] `POST /api/v1/assignments/{id}/upload` — request presigned R2 PUT URL; creates submission row with `submitted_at=None`
 
-- [ ] Virus scan hook on S3 upload completion
+- [x] `POST /api/v1/assignments/submissions/{id}/confirm` — stamp `submitted_at` after direct R2 upload completes
 
-- [ ] `GET /api/v1/assignments/{id}/submissions` — student's submission history
+- [x] `GET /api/v1/assignments/{id}/submissions` — student's submission history
+
+- [x] `assignment_submissions.scan_status` column (`pending` default) — virus scan hook deferred to Sprint 12
+
+- [x] Storage utility: `app/core/storage.py` with lazy boto3 R2 client and `generate_presigned_put`
+
+- [x] Cloudflare R2 config fields added to `app/config.py` and `.env.example`
 
 **Testing (Sprint 4):**
 
-- [ ] Unit tests: quiz scoring (single-choice, multi-choice, partial credit), attempt limit enforcement, time limit
+- [x] Unit tests: quiz scoring (`_score_single_choice`, `_score_multi_choice`, `_score_submission`) — 13 tests
 
-- [ ] Unit tests: assignment submission type validation, file MIME validation, max submissions enforcement
+- [x] Unit tests: storage URL helpers (`get_public_url` with and without custom domain) — 3 tests
 
-- [ ] Integration tests: submit quiz → verify score → verify attempt count increments
+- [x] Integration tests: submit quiz → verify score → verify attempt count increments
 
-- [ ] Integration tests: quiz answer exposure: correct answers NOT returned before all attempts exhausted
+- [x] Integration tests: quiz answer exposure — correct answers NOT returned before all attempts exhausted
 
-- [ ] Integration tests: assignment file upload flow (mocked S3)
+- [x] Integration tests: `MAX_ATTEMPTS_EXCEEDED` on N+1 submission
+
+- [x] Integration tests: assignment file upload flow (presigned URL mocked via `unittest.mock.patch`)
 
 ---
 
@@ -1322,6 +1330,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [ ] GDPR endpoints: `GET /api/v1/users/me/export` and `DELETE /api/v1/users/me`
 
+- [ ] Virus scan hook: wire S3/R2 event → scanning service for `assignment_submissions`; update `scan_status` from `pending` → `clean` or `quarantined` (deferred from Sprint 4)
+
 - [ ] Full E2E test suite run against staging; all Playwright and Detox journeys green
 
 ---
@@ -1436,13 +1446,15 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ---
 
-### Sprint 3 — Auth + Course Structure + Enrollment & Progress
+### Sprint 4 — Auth + Course Structure + Enrollment & Progress + Quizzes & Assignments
 
-**What's available:** The backend currently runs the full Sprint 1 through Sprint 3 API surface:
+**What's available:** The backend currently runs the full Sprint 1 through Sprint 4 API surface:
 
 - Authentication: registration, email verification, login, token refresh, logout, password reset, Google OAuth2, profile, session management, and admin user management
 - Course structure: categories, published course catalog, full course detail, search, and admin course/chapter/lesson/resource management
 - Student learning flows: enroll / unenroll, list enrollments, lesson progress tracking, course progress breakdown, continue-where-you-left-off, private lesson notes, and lesson bookmarks
+- Quizzes: admin creates quizzes with single-choice and multi-choice questions; students submit attempts (auto-scored); correct answers revealed after all attempts exhausted; TOCTOU-safe attempt counting
+- Assignments: admin creates assignments; students request a presigned Cloudflare R2 PUT URL, upload directly, then confirm; `scan_status` placeholder column ready for Sprint 12 virus scanning
 
 #### Prerequisites
 
@@ -1479,12 +1491,10 @@ docker compose up db redis -d
 uv run alembic upgrade head
 ```
 
-This applies all migrations through Sprint 3, including `0003_enrollment_progress.py` for:
+This applies all migrations through Sprint 4, including:
 
-- `enrollments`
-- `lesson_progress`
-- `user_notes`
-- `user_bookmarks`
+- `0003_enrollment_progress.py` — `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks`
+- `0004_quizzes_assignments.py` — `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions`
 
 #### 5. Create the first admin account
 
@@ -1503,7 +1513,9 @@ uv run uvicorn app.main:app --reload
 API is now running at `http://localhost:8000`.
 Interactive docs at `http://localhost:8000/api/docs`.
 
-At this point the API includes the Sprint 3 student workflow endpoints for enrollment, progress, notes, and bookmarks in addition to the earlier auth and course-management routes.
+At this point the API includes the Sprint 4 student workflow endpoints for enrollment, progress, notes, bookmarks, quizzes, and assignments in addition to the earlier auth and course-management routes.
+
+> **Cloudflare R2 (file uploads):** Set `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, and `R2_BUCKET` in `.env` to enable the presigned upload flow. The API starts without these values; file-upload endpoints return `UPLOAD_FAILED` if R2 is not configured.
 
 #### 7. Start the Celery worker (required for emails)
 
@@ -1521,7 +1533,7 @@ Unit tests (no database required):
 uv run pytest tests/unit/ --no-cov
 ```
 
-This now includes Sprint 3 business-logic coverage such as enrollment eligibility and progress calculation.
+This now includes Sprint 4 business-logic coverage: enrollment eligibility, progress calculation, quiz scoring (single-choice, multi-choice), and R2 URL generation.
 
 Integration tests (requires Docker Postgres running on port 5432):
 
@@ -1529,7 +1541,7 @@ Integration tests (requires Docker Postgres running on port 5432):
 uv run pytest tests/integration/ --no-cov
 ```
 
-This now includes Sprint 3 API coverage for enrollments, progress, notes, and bookmarks.
+This now includes Sprint 4 API coverage for enrollments, progress, notes, bookmarks, quizzes, and assignments.
 
 Full suite with coverage:
 
@@ -1537,7 +1549,7 @@ Full suite with coverage:
 uv run pytest
 ```
 
-#### Available endpoints (through Sprint 3)
+#### Available endpoints (through Sprint 4)
 
 **Auth & users**
 
@@ -1598,6 +1610,28 @@ uv run pytest
 | `DELETE` | `/api/v1/lessons/{id}/notes` | Delete the current user's lesson note |
 | `POST` | `/api/v1/lessons/{id}/bookmark` | Toggle lesson bookmark |
 | `GET` | `/api/v1/users/me/bookmarks` | List the current user's bookmarks |
+
+**Quizzes**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/quizzes/` | Create quiz with questions (admin only) |
+| `GET` | `/api/v1/quizzes/{id}` | Get quiz — correct answers masked until all attempts used |
+| `POST` | `/api/v1/quizzes/{id}/submit` | Submit one attempt; auto-scores single/multi-choice |
+| `GET` | `/api/v1/quizzes/{id}/submissions` | List student's attempts for a quiz |
+| `GET` | `/api/v1/quizzes/submissions/{id}` | Single submission detail |
+
+**Assignments & file uploads**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/assignments/` | Create assignment (admin only) |
+| `GET` | `/api/v1/assignments/{id}` | Get assignment detail |
+| `POST` | `/api/v1/assignments/{id}/upload` | Request presigned R2 PUT URL; creates submission row |
+| `POST` | `/api/v1/assignments/submissions/{id}/confirm` | Stamp `submitted_at` after direct upload completes |
+| `GET` | `/api/v1/assignments/{id}/submissions` | List student's submissions for an assignment |
+
+> **Upload flow:** `POST /upload` → PUT file bytes to `upload_url` directly → `POST /confirm`. The backend never proxies file bytes.
 
 ---
 

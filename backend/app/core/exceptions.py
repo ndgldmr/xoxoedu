@@ -227,6 +227,54 @@ class NoteNotFound(AppException):
     message = "Note not found"
 
 
+class QuizNotFound(AppException):
+    """Raised when a quiz cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "QUIZ_NOT_FOUND"
+    message = "Quiz not found"
+
+
+class QuizSubmissionNotFound(AppException):
+    """Raised when a quiz submission cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "QUIZ_SUBMISSION_NOT_FOUND"
+    message = "Quiz submission not found"
+
+
+class AssignmentNotFound(AppException):
+    """Raised when an assignment cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "ASSIGNMENT_NOT_FOUND"
+    message = "Assignment not found"
+
+
+class AssignmentSubmissionNotFound(AppException):
+    """Raised when an assignment submission cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "ASSIGNMENT_SUBMISSION_NOT_FOUND"
+    message = "Assignment submission not found"
+
+
+class MaxAttemptsExceeded(AppException):
+    """Raised when a student tries to submit a quiz after exhausting all attempts."""
+
+    status_code = 409
+    error_code = "MAX_ATTEMPTS_EXCEEDED"
+    message = "You have used all allowed attempts for this quiz"
+
+
+class UploadFailed(AppException):
+    """Raised when a presigned upload URL cannot be generated."""
+
+    status_code = 500
+    error_code = "UPLOAD_FAILED"
+    message = "File upload could not be initiated"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 
