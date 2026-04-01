@@ -1,8 +1,18 @@
+"""Celery tasks for sending transactional authentication emails via Resend."""
+
 from app.worker.celery_app import celery_app
 
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)  # type: ignore[misc]
 def send_verification_email(self, email: str, token: str) -> None:
+    """Send the email-address verification email with a signed 24-hour link.
+
+    Retries up to 3 times with a 60-second delay on transient delivery failures.
+
+    Args:
+        email: Recipient email address.
+        token: Signed verification token produced by ``create_email_token``.
+    """
     from app.config import settings
     from app.worker.email import send_email
 
@@ -20,6 +30,14 @@ def send_verification_email(self, email: str, token: str) -> None:
 
 @celery_app.task(bind=True, max_retries=3, default_retry_delay=60)  # type: ignore[misc]
 def send_password_reset_email(self, email: str, token: str) -> None:
+    """Send the password-reset email with a signed 1-hour link.
+
+    Retries up to 3 times with a 60-second delay on transient delivery failures.
+
+    Args:
+        email: Recipient email address.
+        token: Signed reset token produced by ``create_email_token``.
+    """
     from app.config import settings
     from app.worker.email import send_email
 

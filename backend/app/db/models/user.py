@@ -1,3 +1,5 @@
+"""ORM models for users and their public-facing profiles."""
+
 from __future__ import annotations
 
 import uuid
@@ -15,6 +17,19 @@ if TYPE_CHECKING:
 
 
 class User(Base, UUIDMixin, TimestampMixin):
+    """Core authentication record for a platform user.
+
+    Attributes:
+        email: Unique email address; used as the login identifier.
+        password_hash: bcrypt hash of the user's password, or ``None`` for
+            OAuth-only accounts.
+        role: Access-control role (``"student"`` or ``"admin"``).
+        email_verified: Whether the user has confirmed their email address.
+        profile: One-to-one ``UserProfile`` loaded eagerly via ``selectin``.
+        sessions: Active and historical refresh-token sessions.
+        oauth_accounts: Linked third-party OAuth provider accounts.
+    """
+
     __tablename__ = "users"
 
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True, nullable=False)
@@ -32,6 +47,23 @@ class User(Base, UUIDMixin, TimestampMixin):
 
 
 class UserProfile(Base):
+    """Extended public-facing profile data for a user.
+
+    Stored in a separate table so the core ``users`` table stays lean.
+    The primary key ``user_id`` doubles as the foreign key, enforcing a
+    strict one-to-one relationship with CASCADE delete.
+
+    Attributes:
+        user_id: FK to ``users.id``; also the primary key of this table.
+        display_name: Publicly visible name shown on the learner's profile.
+        avatar_url: URL of the user's profile picture.
+        bio: Free-form biography text.
+        headline: Short professional tagline (e.g. "Full-Stack Developer").
+        social_links: JSONB map of platform names to profile URLs.
+        skills: Array of skill tag strings.
+        user: Back-reference to the owning ``User`` row.
+    """
+
     __tablename__ = "user_profiles"
 
     user_id: Mapped[uuid.UUID] = mapped_column(

@@ -880,43 +880,43 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 **Backend:**
 
-- [ ] Migrations: `categories`, `courses`, `chapters`, `lessons`, `lesson_resources`
+- [x] Migrations: `categories`, `courses`, `chapters`, `lessons`, `lesson_resources`
 
-- [ ] `POST /api/v1/courses` — create course (admin only)
+- [x] `POST /api/v1/admin/courses` — create course (admin only)
 
-- [ ] `GET /api/v1/courses` — list published courses (filterable: category, level, price)
+- [x] `GET /api/v1/courses` — list published courses (filterable: category, level, price)
 
-- [ ] `GET /api/v1/courses/{slug}` — course detail with chapters and lessons
+- [x] `GET /api/v1/courses/{slug}` — course detail with chapters and lessons
 
-- [ ] `PATCH /api/v1/courses/{id}` — update course
+- [x] `PATCH /api/v1/admin/courses/{id}` — update course
 
-- [ ] `DELETE /api/v1/courses/{id}` — soft-delete (archive)
+- [x] `DELETE /api/v1/admin/courses/{id}` — soft-delete (archive)
 
-- [ ] `POST /api/v1/courses/{id}/chapters` — create chapter
+- [x] `POST /api/v1/admin/courses/{id}/chapters` — create chapter
 
-- [ ] `PATCH /api/v1/chapters/{id}` — update chapter; `DELETE /api/v1/chapters/{id}`
+- [x] `PATCH /api/v1/admin/chapters/{id}` — update chapter; `DELETE /api/v1/admin/chapters/{id}`
 
-- [ ] `PATCH /api/v1/courses/{id}/chapters/reorder` — update chapter positions
+- [x] `PATCH /api/v1/admin/courses/{id}/chapters/reorder` — update chapter positions
 
-- [ ] `POST /api/v1/chapters/{id}/lessons` — create lesson
+- [x] `POST /api/v1/admin/chapters/{id}/lessons` — create lesson
 
-- [ ] `PATCH /api/v1/lessons/{id}` — update lesson; `DELETE /api/v1/lessons/{id}`
+- [x] `PATCH /api/v1/admin/lessons/{id}` — update lesson; `DELETE /api/v1/admin/lessons/{id}`
 
-- [ ] `PATCH /api/v1/chapters/{id}/lessons/reorder` — update lesson positions
+- [x] `PATCH /api/v1/admin/chapters/{id}/lessons/reorder` — update lesson positions
 
-- [ ] `POST /api/v1/lessons/{id}/resources` — attach resource
+- [x] `POST /api/v1/admin/lessons/{id}/resources` — attach resource
 
-- [ ] PostgreSQL FTS search: `GET /api/v1/search?q=...`
+- [x] PostgreSQL FTS search: `GET /api/v1/search?q=...`
 
 **Testing (Sprint 2):**
 
-- [ ] Unit tests: slug generation, ordering logic, permission checks per role
+- [x] Integration tests: full CRUD for course → chapter → lesson hierarchy
 
-- [ ] Integration tests: full CRUD for course → chapter → lesson hierarchy
+- [x] Integration tests: reorder chapters and lessons; verify positions
 
-- [ ] Integration tests: reorder chapters and lessons; verify positions
+- [x] Integration tests: search returns correct results; non-published courses excluded
 
-- [ ] Integration tests: search returns correct results; non-published courses excluded
+- [x] CI pipeline running on `feature/sprint-2-course-structure`
 
 ---
 
@@ -1795,6 +1795,81 @@ erDiagram
 | `POST /auth/logout` | Revokes the current session |
 
 A session is **active** when `revoked_at IS NULL` and `expires_at > now()`. The refresh token itself is never stored — only its SHA-256 hash is persisted, so a database breach doesn't expose usable tokens.
+
+---
+
+### Sprint 2 — Course Structure API
+
+**What's available:** Admins can create and manage courses with chapters, lessons, and file resources. Students can browse published courses, view full course detail, and search by keyword.
+
+#### New in Sprint 2
+
+No new infrastructure required — Sprint 2 runs against the same stack as Sprint 1.
+
+Run the new migration after pulling:
+
+```bash
+uv run alembic upgrade head
+```
+
+#### Available endpoints (Sprint 2)
+
+**Public (student-facing)**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `GET` | `/api/v1/categories` | List all categories |
+| `GET` | `/api/v1/courses` | List published courses (`?category_id=`, `?level=`, `?max_price=`, `?skip=`, `?limit=`) |
+| `GET` | `/api/v1/courses/{slug}` | Course detail with full chapter and lesson tree |
+| `GET` | `/api/v1/search?q=...` | Full-text search across published courses |
+
+**Admin (course authoring)**
+
+| Method | Endpoint | Description |
+| --- | --- | --- |
+| `POST` | `/api/v1/admin/courses` | Create a course (slug auto-generated from title) |
+| `PATCH` | `/api/v1/admin/courses/{id}` | Update course fields or status |
+| `DELETE` | `/api/v1/admin/courses/{id}` | Archive course (soft-delete) |
+| `POST` | `/api/v1/admin/courses/{id}/chapters` | Add a chapter (position auto-assigned) |
+| `PATCH` | `/api/v1/admin/chapters/{id}` | Update chapter title |
+| `DELETE` | `/api/v1/admin/chapters/{id}` | Delete chapter |
+| `PATCH` | `/api/v1/admin/courses/{id}/chapters/reorder` | Reorder chapters — `{"ids": [...]}` in desired order |
+| `POST` | `/api/v1/admin/chapters/{id}/lessons` | Add a lesson (position auto-assigned) |
+| `PATCH` | `/api/v1/admin/lessons/{id}` | Update lesson |
+| `DELETE` | `/api/v1/admin/lessons/{id}` | Delete lesson |
+| `PATCH` | `/api/v1/admin/chapters/{id}/lessons/reorder` | Reorder lessons — `{"ids": [...]}` in desired order |
+| `POST` | `/api/v1/admin/lessons/{id}/resources` | Attach a file resource to a lesson |
+
+#### Course lifecycle
+
+Courses move through three statuses. The `slug` is locked after a course is published to protect external links.
+
+```
+draft ──► published ──► archived
+  │                        ▲
+  └────────────────────────┘
+```
+
+| Transition | Allowed |
+| --- | --- |
+| `draft → published` | Yes |
+| `draft → archived` | Yes |
+| `published → draft` | Yes |
+| `published → archived` | Yes |
+| `archived → published` | Yes |
+| Changing `slug` on a published course | No — returns `409 SLUG_IMMUTABLE` |
+
+#### Full-text search
+
+The `search_vector` column on `courses` is a PostgreSQL `TSVECTOR GENERATED ALWAYS AS STORED` column computed from `title` and `description`. Searches use `plainto_tsquery('english', q)` and results are ranked by `ts_rank`. Only published, non-archived courses are returned.
+
+```bash
+# Find courses matching "python"
+GET /api/v1/search?q=python
+
+# Empty query is rejected
+GET /api/v1/search?q=    → 422 Unprocessable Entity
+```
 
 ---
 

@@ -8,7 +8,6 @@ Prompts for credentials that must come from external services.
 Usage:
     uv run scripts/setup_env.py
 """
-import os
 import secrets
 import sys
 from pathlib import Path
@@ -19,6 +18,12 @@ ENV_EXAMPLE = ROOT / ".env.example"
 
 
 def generate_rsa_keypair() -> tuple[str, str]:
+    """Generate an RSA-2048 keypair formatted for single-line .env storage.
+
+    Returns:
+        A tuple of ``(private_pem, public_pem)`` where newlines have been
+        escaped to ``\\n`` so each value fits on a single ``.env`` line.
+    """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -36,6 +41,20 @@ def generate_rsa_keypair() -> tuple[str, str]:
 
 
 def prompt(label: str, default: str = "", secret: bool = False) -> str:
+    """Display an interactive prompt and return the user's input.
+
+    If the user submits an empty string, *default* is returned instead.
+    When *secret* is ``True``, ``getpass`` is used so the input is not echoed
+    to the terminal.
+
+    Args:
+        label: Human-readable prompt label displayed to the user.
+        default: Value returned if the user presses Enter without typing anything.
+        secret: If ``True``, hide input (useful for passwords and API keys).
+
+    Returns:
+        The trimmed user input, or *default* if the input was empty.
+    """
     display = f"  {label}"
     if default:
         display += f" [{default}]"
@@ -51,10 +70,17 @@ def prompt(label: str, default: str = "", secret: bool = False) -> str:
 
 
 def main() -> None:
+    """Run the interactive environment setup wizard and write a ``.env`` file.
+
+    Generates the RSA keypair and a random ``SECRET_KEY`` automatically, then
+    prompts for external service credentials (Postgres, Google OAuth, Resend).
+    If a ``.env`` file already exists, the user is asked to confirm before it
+    is overwritten.
+    """
     print("\nxoxo Education — Environment Setup\n" + "=" * 36)
 
     if ENV_FILE.exists():
-        overwrite = input(f"\n.env already exists. Overwrite? [y/N]: ").strip().lower()
+        overwrite = input("\n.env already exists. Overwrite? [y/N]: ").strip().lower()
         if overwrite != "y":
             print("Aborted.")
             sys.exit(0)

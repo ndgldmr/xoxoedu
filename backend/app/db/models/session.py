@@ -1,3 +1,5 @@
+"""ORM model for refresh-token sessions."""
+
 from __future__ import annotations
 
 import uuid
@@ -14,6 +16,24 @@ if TYPE_CHECKING:
 
 
 class Session(Base, UUIDMixin):
+    """Persistent refresh-token session record.
+
+    Only the SHA-256 hash of the raw refresh token is stored, so a database
+    compromise does not expose live tokens.  Token rotation is enforced: each
+    ``/auth/refresh`` call revokes the presented session and creates a new one.
+    Replay detection: if a revoked session hash is presented, all sessions for
+    that user are immediately revoked.
+
+    Attributes:
+        user_id: FK to ``users.id``; cascades on delete.
+        refresh_token_hash: SHA-256 hex digest of the raw refresh token.
+        expires_at: Absolute expiry timestamp (timezone-aware).
+        created_at: Session creation timestamp set by the database.
+        revoked_at: Set when the session is explicitly logged out, rotated,
+            or invalidated by a replay attack.
+        user: Back-reference to the owning ``User``.
+    """
+
     __tablename__ = "sessions"
 
     user_id: Mapped[uuid.UUID] = mapped_column(

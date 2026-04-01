@@ -1,3 +1,5 @@
+"""FastAPI application factory — middleware, routers, and exception handlers."""
+
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
@@ -24,6 +26,17 @@ from app.modules.users.router import router as users_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
+    """Manage application startup and shutdown lifecycle.
+
+    Verifies the database connection on startup and gracefully disposes the
+    connection pool on shutdown.
+
+    Args:
+        app: The FastAPI application instance.
+
+    Yields:
+        Control to the running application between startup and shutdown.
+    """
     from app.db.session import engine
 
     async with engine.connect() as conn:
@@ -67,4 +80,9 @@ app.include_router(media_router, prefix="/api/v1")
 
 @app.get("/health")
 async def health() -> dict:
+    """Return a simple liveness probe response.
+
+    Returns:
+        A JSON object with ``{"status": "ok"}``.
+    """
     return {"status": "ok"}

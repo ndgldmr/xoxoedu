@@ -1,3 +1,5 @@
+"""Shared FastAPI dependency functions for authentication and authorization."""
+
 import uuid
 
 from fastapi import Depends
@@ -16,6 +18,19 @@ async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> User:
+    """Decode the Bearer token and return the corresponding User row.
+
+    Args:
+        credentials: HTTP Bearer credentials extracted by ``HTTPBearer``.
+        db: Async database session injected by ``get_db``.
+
+    Returns:
+        The authenticated ``User`` ORM instance.
+
+    Raises:
+        TokenInvalid: If no token is provided, the token cannot be decoded,
+            or no user exists for the ``sub`` claim.
+    """
     token = credentials.credentials if credentials else None
     if not token:
         raise TokenInvalid()
@@ -30,6 +45,17 @@ async def get_current_user(
 async def get_current_verified_user(
     user: User = Depends(get_current_user),
 ) -> User:
+    """Extend ``get_current_user`` to require a verified email address.
+
+    Args:
+        user: User returned by ``get_current_user``.
+
+    Returns:
+        The same ``User`` instance if their email is verified.
+
+    Raises:
+        EmailNotVerified: If the user has not confirmed their email address.
+    """
     if not user.email_verified:
         raise EmailNotVerified()
     return user

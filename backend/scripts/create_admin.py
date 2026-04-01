@@ -14,6 +14,19 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 
 async def main(email: str, password: str) -> None:
+    """Create a new admin user or promote an existing user to the admin role.
+
+    If a user with *email* already exists and is already an admin, the script
+    exits without making any changes.  If the user exists but has a different
+    role, their role is updated to ``"admin"``.  Otherwise, a brand-new
+    email-verified admin account is created with a bcrypt-hashed password and
+    a default display name derived from the email address.
+
+    Args:
+        email: Email address of the admin account to create or promote.
+        password: Plain-text password to store as a bcrypt hash (only used when
+            creating a new account; ignored when promoting an existing user).
+    """
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
