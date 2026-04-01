@@ -18,7 +18,7 @@ router = APIRouter(prefix="/quizzes", tags=["quizzes"])
 async def create_quiz(
     data: QuizIn,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.ADMIN)),
+    current_user=require_role(Role.ADMIN),
 ) -> dict:
     """Create a quiz with questions on a lesson (admin only).
 
@@ -38,7 +38,7 @@ async def create_quiz(
 async def get_submission(
     submission_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Retrieve a single quiz submission belonging to the current student.
 
@@ -58,7 +58,7 @@ async def get_submission(
 async def get_quiz(
     quiz_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Retrieve a quiz with questions (correct answers masked).
 
@@ -79,7 +79,7 @@ async def submit_quiz(
     quiz_id: uuid.UUID,
     data: SubmitQuizIn,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Submit one attempt at a quiz.
 
@@ -103,7 +103,7 @@ async def submit_quiz(
 async def list_submissions(
     quiz_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """List all submissions made by the current student on a quiz.
 

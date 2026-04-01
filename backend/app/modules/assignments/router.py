@@ -18,7 +18,7 @@ router = APIRouter(prefix="/assignments", tags=["assignments"])
 async def create_assignment(
     data: AssignmentIn,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.ADMIN)),
+    current_user=require_role(Role.ADMIN),
 ) -> dict:
     """Create an assignment on a lesson (admin only).
 
@@ -38,7 +38,7 @@ async def create_assignment(
 async def get_assignment(
     assignment_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Retrieve assignment details.
 
@@ -59,7 +59,7 @@ async def request_upload(
     assignment_id: uuid.UUID,
     data: UploadRequestIn,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Request a presigned PUT URL for uploading a file to Cloudflare R2.
 
@@ -91,7 +91,7 @@ async def request_upload(
 async def confirm_upload(
     submission_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """Confirm that the direct R2 upload is complete.
 
@@ -114,7 +114,7 @@ async def confirm_upload(
 async def list_submissions(
     assignment_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    current_user=Depends(require_role(Role.STUDENT)),
+    current_user=require_role(Role.STUDENT),
 ) -> dict:
     """List all submissions by the current student for an assignment.
 
