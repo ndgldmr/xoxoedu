@@ -1,3 +1,5 @@
+"""ORM models for the course content hierarchy: Category → Course → Chapter → Lesson → LessonResource."""
+
 from __future__ import annotations
 
 import uuid
@@ -24,6 +26,16 @@ if TYPE_CHECKING:
 
 
 class Category(Base, UUIDMixin):
+    """Course category with optional self-referential nesting.
+
+    Attributes:
+        name: Display name shown in the UI.
+        slug: URL-safe unique identifier derived from ``name``.
+        parent_id: Optional FK to another ``Category`` for sub-categories;
+            set to ``NULL`` on parent delete.
+        courses: All courses assigned to this category.
+    """
+
     __tablename__ = "categories"
 
     name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -36,6 +48,35 @@ class Category(Base, UUIDMixin):
 
 
 class Course(Base, UUIDMixin, TimestampMixin):
+    """Top-level course record.
+
+    Prices are stored as integer cents to avoid floating-point precision issues
+    and to mirror the Stripe API convention.  The ``search_vector`` column is a
+    PostgreSQL ``GENERATED ALWAYS AS STORED`` tsvector computed from the title
+    and description; the ORM never writes to it.
+
+    Attributes:
+        slug: Unique URL-safe identifier; immutable once the course is published.
+        title: Course display title.
+        description: Optional long-form description.
+        cover_image_url: URL of the course thumbnail image.
+        category_id: Optional FK to ``categories.id``; set to ``NULL`` on delete.
+        level: Difficulty level (``"beginner"``, ``"intermediate"``, or ``"advanced"``).
+        language: ISO 639-1 language code (e.g. ``"en"``).
+        price_cents: Price in the smallest currency unit (e.g. US cents).
+        currency: ISO 4217 currency code (e.g. ``"USD"``).
+        status: Publication state (``"draft"``, ``"published"``, or ``"archived"``).
+        settings: JSONB blob for arbitrary instructor-defined course settings.
+        display_instructor_name: Overridable instructor name shown to learners.
+        display_instructor_bio: Overridable instructor biography shown to learners.
+        created_by: FK to the ``users.id`` of the admin who created this course.
+        archived_at: Set when the course is archived; also used to filter from listings.
+        search_vector: Server-generated tsvector for full-text search ranking.
+        category: Eager-loadable ``Category`` relationship.
+        creator: The creating ``User`` record.
+        chapters: Ordered list of ``Chapter`` objects.
+    """
+
     __tablename__ = "courses"
 
     slug: Mapped[str] = mapped_column(String(200), unique=True, nullable=False)
@@ -76,6 +117,16 @@ class Course(Base, UUIDMixin, TimestampMixin):
 
 
 class Chapter(Base, UUIDMixin, TimestampMixin):
+    """Ordered section within a course, containing one or more lessons.
+
+    Attributes:
+        course_id: FK to the parent ``courses.id``; cascades on delete.
+        title: Chapter display title.
+        position: 1-based display order within the parent course.
+        course: Back-reference to the parent ``Course``.
+        lessons: Ordered list of ``Lesson`` objects in this chapter.
+    """
+
     __tablename__ = "chapters"
 
     course_id: Mapped[uuid.UUID] = mapped_column(
@@ -91,6 +142,23 @@ class Chapter(Base, UUIDMixin, TimestampMixin):
 
 
 class Lesson(Base, UUIDMixin, TimestampMixin):
+    """Individual learning unit within a chapter.
+
+    Attributes:
+        chapter_id: FK to the parent ``chapters.id``; cascades on delete.
+        title: Lesson display title.
+        type: Content type (``"video"``, ``"text"``, ``"quiz"``,
+            ``"assignment"``, ``"code_exercise"``, or ``"live_session"``).
+        content: JSONB payload whose schema varies by ``type`` (e.g. HTML body
+            for text lessons, question list for quizzes).
+        video_asset_id: Reference to an external video asset (e.g. Mux asset ID).
+        is_free_preview: Whether unenrolled users can access this lesson.
+        is_locked: Whether the lesson is temporarily hidden from enrolled users.
+        position: 1-based display order within the parent chapter.
+        chapter: Back-reference to the parent ``Chapter``.
+        resources: Downloadable files attached to this lesson.
+    """
+
     __tablename__ = "lessons"
 
     chapter_id: Mapped[uuid.UUID] = mapped_column(
@@ -111,6 +179,18 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
 
 
 class LessonResource(Base, UUIDMixin):
+    """Downloadable file or link attached to a lesson.
+
+    Attributes:
+        lesson_id: FK to the parent ``lessons.id``; cascades on delete.
+        name: Display name of the resource (e.g. ``"Cheatsheet.pdf"``).
+        file_url: Public URL where the file can be downloaded.
+        file_type: MIME type or informal type label (e.g. ``"application/pdf"``).
+        size_bytes: File size in bytes, used for display purposes.
+        created_at: Timestamp set by the database on INSERT.
+        lesson: Back-reference to the parent ``Lesson``.
+    """
+
     __tablename__ = "lesson_resources"
 
     lesson_id: Mapped[uuid.UUID] = mapped_column(

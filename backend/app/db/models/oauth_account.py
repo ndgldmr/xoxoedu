@@ -1,3 +1,5 @@
+"""ORM model for third-party OAuth provider account links."""
+
 from __future__ import annotations
 
 import uuid
@@ -13,6 +15,20 @@ if TYPE_CHECKING:
 
 
 class OAuthAccount(Base, UUIDMixin):
+    """Link between a platform user and a third-party OAuth provider identity.
+
+    The ``(provider, provider_user_id)`` pair is unique, preventing duplicate
+    accounts if the same provider identity is presented twice.
+
+    Attributes:
+        user_id: FK to ``users.id``; cascades on delete.
+        provider: OAuth provider name (e.g. ``"google"``).
+        provider_user_id: The user's stable ID in the provider's system.
+        access_token_enc: Optionally stored (encrypted) provider access token
+            for future API calls on behalf of the user.
+        user: Back-reference to the owning ``User``.
+    """
+
     __tablename__ = "oauth_accounts"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
