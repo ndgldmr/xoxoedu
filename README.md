@@ -1464,7 +1464,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 #### Prerequisites
 
 - [uv](https://docs.astral.sh/uv/) — `brew install uv`
-- [Docker](https://orbstack.dev) — for PostgreSQL, Redis, and the optional pgweb DB browser
+- [Docker](https://orbstack.dev) — for PostgreSQL, Redis, the API, Celery worker, and pgweb DB browser
 
 #### 1. Install dependencies
 
@@ -1489,25 +1489,36 @@ This generates RSA keys and a secret key automatically, then prompts for credent
 
 > The API starts without R2 credentials. File-upload endpoints return `500 UPLOAD_FAILED` if R2 is not configured.
 
-#### 3. Start infrastructure
+#### 3. Start services
+
+**Option A — everything in Docker (recommended)**
+
+```bash
+docker compose up --build -d
+```
+
+Starts Postgres, Redis, the API, the Celery worker, and pgweb all in containers. The API is available at `http://localhost:8000` and pgweb at `http://localhost:8081`.
+
+Then run migrations inside the container:
+
+```bash
+docker compose exec api uv run alembic upgrade head
+```
+
+**Option B — infrastructure in Docker, API and worker locally**
+
+Useful if you want hot-reload without rebuilding the image on every change:
 
 ```bash
 docker compose up db redis -d
-```
-
-To also spin up the pgweb database browser (available at `http://localhost:8081`):
-
-```bash
-docker compose up db redis pgweb -d
+uv run alembic upgrade head
+uv run uvicorn app.main:app --reload          # terminal 1
+uv run celery -A app.worker.celery_app worker --loglevel=info  # terminal 2
 ```
 
 #### 4. Run database migrations
 
-```bash
-uv run alembic upgrade head
-```
-
-This applies all four migrations:
+This applies all four migrations (only needed once, or after pulling new schema changes):
 
 | Migration | Tables created |
 | --- | --- |
@@ -1516,29 +1527,31 @@ This applies all four migrations:
 | `0003_enrollment_progress` | `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks` |
 | `0004_quizzes_assignments` | `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions` |
 
+```bash
+# In Docker:
+docker compose exec api uv run alembic upgrade head
+
+# Locally:
+uv run alembic upgrade head
+```
+
 #### 5. Create the first admin account
 
 ```bash
+# In Docker:
+docker compose exec api uv run scripts/create_admin.py admin@example.com yourpassword
+
+# Locally:
 uv run scripts/create_admin.py admin@example.com yourpassword
 ```
 
 If the email already exists as a student it is promoted to admin. Run this once after migrations.
 
-#### 6. Start the API
+#### 6. API and docs
 
-```bash
-uv run uvicorn app.main:app --reload
-```
-
-API is running at `http://localhost:8000`. Interactive docs at `http://localhost:8000/api/docs`.
-
-#### 7. Start the Celery worker (required for emails)
-
-In a second terminal:
-
-```bash
-uv run celery -A app.worker.celery_app worker --loglevel=info
-```
+- API: `http://localhost:8000`
+- Interactive docs: `http://localhost:8000/api/docs`
+- pgweb (DB browser): `http://localhost:8081`
 
 ---
 

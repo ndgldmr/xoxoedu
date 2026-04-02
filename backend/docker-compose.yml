@@ -30,6 +30,10 @@ services:
   api:
     build: .
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
@@ -40,8 +44,12 @@ services:
 
   worker:
     build: .
-    command: celery -A app.worker.celery_app worker --loglevel=info
+    command: uv run celery -A app.worker.celery_app worker --loglevel=info
     env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
         condition: service_healthy
