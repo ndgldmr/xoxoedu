@@ -3,3 +3,6 @@ memory/
 
 # Internal docs
 DESIGN_BRIEF.md
+
+# Brand source files (working files; only production-ready assets go in web-client/public/)
+logo/

@@ -16,6 +16,8 @@
 10. [Sprint Plan](#10-sprint-plan)
 11. [Definition of Done](#11-definition-of-done)
 12. [Running the Project](#12-running-the-project)
+13. [Design & UX Specification](#13-design--ux-specification)
+14. [Deployment & Domain Configuration](#14-deployment--domain-configuration)
 
 ---
 
@@ -154,6 +156,8 @@ The system is being developed from scratch rather than forking an existing solut
 
 ### Infrastructure
 
+#### Backend
+
 | Component | Technology | Notes |
 | --- | --- | --- |
 | Containerization | Docker + Docker Compose | Dev parity with prod |
@@ -165,6 +169,18 @@ The system is being developed from scratch rather than forking an existing solut
 | Error Tracking | Sentry | Backend + web + mobile |
 | Email | Resend or Postmark | Transactional; template-managed |
 | Push Notifications | Expo Push or Firebase Cloud Messaging (FCM) | Mobile only |
+
+#### Frontend
+
+| Component | Technology | Notes |
+| --- | --- | --- |
+| Web hosting | Vercel | Native Next.js 14 App Router support; SSR, ISR, edge middleware; preview deploys per PR |
+| Web DNS & proxy | Cloudflare (free plan) | Nameservers migrated from Namecheap; proxies `api.xoxoeducation.com` (DDoS + WAF); SSL Full (strict) for Vercel |
+| Domain | xoxoeducation.com | Registered on Namecheap; DNS managed in Cloudflare |
+| Mobile builds | Expo EAS Build | Cloud builds for iOS (`.ipa`) and Android (`.aab`) without local Xcode / Android Studio |
+| Mobile OTA updates | Expo EAS Update | Push JS-bundle fixes to installed apps instantly, bypassing store review |
+| iOS distribution | Apple Developer Program | $99/year; required for App Store submission and TestFlight |
+| Android distribution | Google Play Console | $25 one-time; required for Play Store |
 
 ---
 
@@ -1342,21 +1358,23 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 #### Web Client Sprint W1 (parallel with Backend S1–S2)
 
-- [ ] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
+- [x] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
 
-- [ ] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
+- [x] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
 
-- [ ] Auth: login page, register page, OAuth redirect, token refresh interceptor
+- [x] Auth: login page, register page, OAuth redirect, token refresh interceptor
 
-- [ ] Protected routes: middleware redirects unauthenticated users
+- [x] Protected routes: middleware redirects unauthenticated users
 
-- [ ] Course browse page: grid, filter sidebar, search
+- [x] Course browse page: grid, filter sidebar, search
 
-- [ ] Course detail page: syllabus, instructor, reviews (SSR)
+- [x] Course detail page: syllabus, instructor, reviews (SSR)
 
-- [ ] Vitest + React Testing Library setup; Playwright setup
+- [x] Vitest + React Testing Library setup; Playwright setup
 
-- [ ] CI: web lint, type check, unit tests, Playwright smoke test on every PR
+- [x] CI: web lint, type check, unit tests, Playwright smoke test on every PR
+
+**Screens to implement (§13 design spec):** WEB-P1 (Landing), WEB-P2 (Course Catalog), WEB-P3 (Course Detail — unenrolled state), WEB-P4 (Login), WEB-P5 (Register), WEB-P6 (Forgot / Reset Password)
 
 #### Web Client Sprint W2 (parallel with Backend S3–S4)
 
@@ -1374,6 +1392,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [ ] Assignment submission: text editor + file upload (presigned URL flow)
 
+**Screens to implement (§13 design spec):** WEB-S1 (Student Dashboard), WEB-S2 (Course Player Shell), WEB-S3 (Video Lesson), WEB-S4 (Text Lesson), WEB-S5 (Quiz — all states), WEB-S6 (Assignment — states A & B: submission + pending)
+
 #### Web Client Sprint W3 (parallel with Backend S5–S9)
 
 - [ ] Stripe checkout integration
@@ -1389,6 +1409,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 - [ ] Admin: assignment builder with AI rubric suggestion
 
 - [ ] Admin: submission grading queue
+
+**Screens to implement (§13 design spec):** WEB-P7 (Certificate Verification — public), WEB-S6 (Assignment — states C & D: AI + human feedback), WEB-S8 (AI Course Assistant panel), WEB-S10 (My Certificates), WEB-A1 (Admin Dashboard), WEB-A2 (Course List), WEB-A3 (Create/Edit Course Settings), WEB-A4 (Content Builder), WEB-A5 (Lesson Editor — all types), WEB-A6 (Quiz Builder), WEB-A7 (Assignment Builder), WEB-A8 (Student Management), WEB-A9 (Submission Grading Queue), WEB-A10 (Course Analytics), WEB-A13 (AI Configuration)
 
 #### Web Client Sprint W4 (parallel with Backend S10–S12)
 
@@ -1408,6 +1430,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 - [ ] Accessibility audit: axe-core scan; WCAG 2.1 AA fixes
 
+**Screens to implement (§13 design spec):** WEB-S7 (Code Exercise Lesson), WEB-S9 (Discussion Thread — embedded in all lessons), WEB-S11 (Bookmarks), WEB-S12 (Calendar), WEB-S13 (Notification Center), WEB-S14 (Profile & Account Settings), WEB-A11 (Batch / Cohort Management), WEB-A12 (Announcements), WEB-A14 (Payment & Billing), WEB-A15 (Platform Settings), WEB-A16 (Moderation Queue), WEB-A17 (Certificate Request Queue), WEB-A18 (Student Detail — admin)
+
 #### Mobile Client Sprint M1 (parallel with Web W1–W2)
 
 - [ ] Expo project setup: TypeScript, Expo Router, Tailwind (NativeWind)
@@ -1421,6 +1445,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 - [ ] Progress auto-save with offline queue (flush on reconnect)
 
 - [ ] Jest + React Native Testing Library setup; Detox setup
+
+**Screens to implement (§13 design spec):** MOB-O1 (Splash / Onboarding), MOB-O2 (Login), MOB-O3 (Register), MOB-O4 (Email Verification Prompt), MOB-O5 (Forgot / Reset Password), MOB-H1 (Home / Dashboard), MOB-E1 (Course Catalog), MOB-E2 (Course Detail), MOB-L1 (My Learning), MOB-LP1 (Lesson Player Shell), MOB-LP2 (Video Lesson), MOB-LP3 (Text Lesson)
 
 #### Mobile Client Sprint M2 (parallel with Web W3–W4)
 
@@ -1437,6 +1463,8 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 - [ ] Certificate screen
 
 - [ ] Detox: critical journey E2E on iOS simulator and Android emulator
+
+**Screens to implement (§13 design spec):** MOB-LP4 (Quiz), MOB-LP5 (Assignment Submission), MOB-LP6 (Discussion — full-screen modal), MOB-LP7 (AI Course Assistant), MOB-N1 (Notifications), MOB-PR1 (Profile), MOB-PR2 (My Certificates), MOB-PR3 (Calendar), MOB-PR4 (Account Settings)
 
 ---
 
@@ -1554,6 +1582,491 @@ If the email already exists as a student it is promoted to admin. Run this once 
 - pgweb (DB browser): `http://localhost:8081`
 
 ---
+
+## 13. Design & UX Specification
+
+> This section maps the design brief to the engineering requirements. Screen IDs (WEB-Pn, WEB-Sn, WEB-An, MOB-On, MOB-Hn, etc.) are the canonical reference identifiers used in the sprint plan and in the design handoff. Each client sprint lists which screens it builds.
+
+---
+
+### 13.1 Design Principles
+
+| Principle | What it means in practice |
+| --- | --- |
+| **Content first** | The lesson, video, or quiz should dominate the screen. Navigation chrome should recede. |
+| **Progress is motivating** | Progress bars, checkmarks, and percentages should be visible, accurate, and satisfying. Completion should feel like an event. |
+| **Never lose my place** | Students always know where they are in a course. Deep navigation never feels like a dead end. |
+| **Feedback is immediate** | Quiz results, AI responses, and submission confirmations appear without full page reloads. Loading states are clear and brief. |
+| **Mobile is not a reduced experience** | Mobile gets the same content and features as web — not a stripped-down version. Layouts adapt; functionality does not disappear. |
+| **Admin efficiency over aesthetics** | The admin panel prioritizes density and speed. Admins are power users; minimize clicks for daily tasks. |
+
+---
+
+### 13.2 Users & Goals
+
+#### Student
+
+A learner enrolled in one or more courses who wants to:
+
+- Make steady, visible progress through course material
+- Get quick, clear feedback on what they know and don't know
+- Ask questions and get answers without waiting for a human
+- Feel accomplished — certificates, completion milestones
+- Pick up where they left off with zero friction, on any device
+
+**Mental model:** The student thinks of xoxo like Netflix for learning — a clean, distraction-free experience where content is front and center and the UI gets out of the way.
+
+#### Admin
+
+A team member who builds courses, manages students, grades work, and runs the platform. They want to:
+
+- Build and publish courses quickly without technical knowledge
+- See at a glance how students are engaging with content
+- Grade submission queues efficiently without hunting for context
+- Configure how AI behaves per course
+- Send targeted communications to the right students at the right time
+
+**Mental model:** The admin thinks of the admin panel like a CMS + ops dashboard — powerful but organized, where everything needed is one or two clicks away.
+
+---
+
+### 13.3 Information Architecture — Web
+
+#### Public (logged-out)
+
+```
+/                          Home / Marketing landing page            WEB-P1
+/courses                   Course catalog                           WEB-P2
+/courses/[slug]            Course detail page                       WEB-P3
+/login                     Login                                    WEB-P4
+/register                  Register                                 WEB-P5
+/forgot-password           Forgot password                          WEB-P6
+/reset-password/[token]    Reset password                           WEB-P6
+/verify/[token]            Certificate verification (public)        WEB-P7
+```
+
+#### Student (logged-in)
+
+```
+/dashboard                         My learning dashboard                  WEB-S1
+/courses                           Course catalog (with enrollment state) WEB-P2
+/courses/[slug]                    Course detail ("Continue" CTA)         WEB-P3
+/learn/[course-slug]               Course player shell                    WEB-S2
+/learn/[course-slug]/[lesson-id]   Active lesson view                     WEB-S3–S7
+/me/certificates                   My certificates                        WEB-S10
+/me/bookmarks                      My bookmarks                           WEB-S11
+/me/calendar                       Upcoming live sessions                 WEB-S12
+/me/notifications                  Notification center                    WEB-S13
+/me/profile                        Profile & account settings             WEB-S14
+```
+
+#### Admin (logged-in, admin role)
+
+```
+/admin                                       Admin overview dashboard      WEB-A1
+/admin/courses                               Course list                   WEB-A2
+/admin/courses/new                           Create course                 WEB-A3
+/admin/courses/[id]                          Course settings               WEB-A3
+/admin/courses/[id]/content                  Content builder               WEB-A4
+/admin/courses/[id]/content/[lesson-id]      Lesson editor                 WEB-A5
+/admin/courses/[id]/students                 Enrolled students             WEB-A8
+/admin/courses/[id]/submissions              Submission grading queue      WEB-A9
+/admin/courses/[id]/analytics                Course analytics              WEB-A10
+/admin/courses/[id]/ai                       AI configuration              WEB-A13
+/admin/batches                               Batch / cohort list           WEB-A11
+/admin/batches/[id]                          Batch detail & timetable      WEB-A11
+/admin/students                              All students                  WEB-A18
+/admin/students/[id]                         Student detail                WEB-A18
+/admin/announcements                         Announcements                 WEB-A12
+/admin/moderation                            Flagged content queue         WEB-A16
+/admin/certificates                          Certificate request queue     WEB-A17
+/admin/payments                              Payments & revenue            WEB-A14
+/admin/coupons                               Coupon management             WEB-A14
+/admin/settings                              Platform settings             WEB-A15
+```
+
+---
+
+### 13.4 Information Architecture — Mobile
+
+Mobile uses a **bottom tab bar** with five tabs:
+
+```
+Tab 1: Home          Dashboard — enrolled courses, continue learning, announcements   MOB-H1
+Tab 2: Explore       Course catalog — browse and search                               MOB-E1, MOB-E2
+Tab 3: My Learning   Enrollment list with progress details                            MOB-L1
+Tab 4: Notifications Notification feed                                                MOB-N1
+Tab 5: Profile       Account, settings, certificates, bookmarks                      MOB-PR1–PR4
+```
+
+**Lesson flow** (full-screen, pushed on top of any tab):
+
+```
+Course Detail (MOB-E2)
+  └── Lesson Player Shell (MOB-LP1) — full-screen, immersive
+        ├── Video Lesson (MOB-LP2)
+        ├── Text Lesson (MOB-LP3)
+        ├── Quiz (MOB-LP4)
+        ├── Assignment Submission (MOB-LP5)
+        ├── Discussion (MOB-LP6) — full-screen modal
+        └── AI Assistant (MOB-LP7) — floating button → full-screen chat
+```
+
+**Onboarding flow** (first-launch only):
+
+```
+Splash / Onboarding (MOB-O1)
+  └── Login (MOB-O2) | Register (MOB-O3)
+        └── Email Verification Prompt (MOB-O4)
+              └── Forgot / Reset Password (MOB-O5)
+```
+
+---
+
+### 13.5 Web Screen Inventory
+
+#### Public Screens
+
+| ID | Screen | Purpose | Key states / notes |
+| --- | --- | --- | --- |
+| WEB-P1 | Home / Landing Page | Convert visitors to students | Hero, featured courses, value props, social proof, footer |
+| WEB-P2 | Course Catalog | Find and filter courses | Filter sidebar; search; sort; pagination or infinite scroll |
+| WEB-P3 | Course Detail | Decision to enroll | Unenrolled (enroll/buy CTA) / Enrolled ("Continue") / Completed ("View Certificate") |
+| WEB-P4 | Login | Authenticate | Email+password, Google OAuth, "Forgot password?" link, error states |
+| WEB-P5 | Register | Create account | Email+password, Google OAuth, terms acknowledgement, email verification prompt |
+| WEB-P6 | Forgot / Reset Password | Recover access | Forgot (email input + confirmation) / Reset (new password fields) |
+| WEB-P7 | Certificate Verification | Public cert verification | Valid cert details / Invalid token error — read-only, no auth required |
+
+#### Student Screens
+
+| ID | Screen | Purpose | Key states / notes |
+| --- | --- | --- | --- |
+| WEB-S1 | Student Dashboard | Home base; continue learning | Empty (no enrollments) / Active courses with progress + upcoming sessions widget |
+| WEB-S2 | Course Player Shell | Persistent frame for lesson content | Left sidebar (chapter/lesson nav, completion dots, lock state); top bar; prev/next nav |
+| WEB-S3 | Video Lesson | Deliver video content | HLS player; captions; transcript (searchable, synced); notes; resources; mark complete |
+| WEB-S4 | Text Lesson | Deliver written content | Rich text; notes; downloadable resources; mark complete; discussion |
+| WEB-S5 | Quiz Lesson | Test knowledge | Not started / In progress (timer, question-by-question) / Results (score, AI feedback, retake) |
+| WEB-S6 | Assignment Lesson | Capture submissions | A: not submitted / B: pending (AI generating) / C: AI feedback received / D: fully graded |
+| WEB-S7 | Code Exercise Lesson | Write and run code | Split-pane editor + output; test case pass/fail; AI explain on failure; reset to starter |
+| WEB-S8 | AI Course Assistant | Chat with course content | Slide-in panel; streaming response; citations with lesson links; conversation history |
+| WEB-S9 | Discussion Thread | Per-lesson peer discussion | Embedded at bottom of every lesson; post / reply (1-level nesting) / upvote / flag |
+| WEB-S10 | My Certificates | View and download certs | Certificate cards; download PDF; copy verification link; empty state |
+| WEB-S11 | Bookmarks | Saved lessons | Lessons grouped by course; click to jump directly to lesson |
+| WEB-S12 | Calendar | Upcoming live sessions | Month/week toggle; session detail panel; "Add to Calendar" (.ics export) |
+| WEB-S13 | Notification Center | All notifications | Sorted by recency; per-type icon; unread highlight; "Mark all as read" |
+| WEB-S14 | Profile & Account Settings | Account management | Tabs: Profile / Account / Notifications / Privacy & Data |
+
+#### Admin Screens
+
+| ID | Screen | Purpose | Key states / notes |
+| --- | --- | --- | --- |
+| WEB-A1 | Admin Overview Dashboard | Platform pulse | KPI cards; enrollment + revenue charts; top courses table; pending queues |
+| WEB-A2 | Course List | Manage all courses | Status filter (Draft/Published/Archived); row actions: Edit / Analytics / Archive |
+| WEB-A3 | Create / Edit Course Settings | Course metadata & config | All course fields; status toggle; Save Draft / Publish / Preview actions |
+| WEB-A4 | Course Content Builder | Build chapter/lesson tree | Two-panel: left = outline with drag-and-drop; right = lesson editor |
+| WEB-A5 | Lesson Editor | Edit lesson content | Varies by type: video (upload + transcript) / text (block editor) / quiz / assignment / code |
+| WEB-A6 | Quiz Builder | Build quiz questions | Question type selector; drag reorder; per-question explanation; time limit / attempts settings |
+| WEB-A7 | Assignment Builder | Build assignment + rubric | Rich text instructions; rubric table with AI suggestion; submission type toggles |
+| WEB-A8 | Student Management (Course) | Manage enrolled students | Progress table; enroll by email; bulk CSV enroll; remove student; export |
+| WEB-A9 | Submission Grading Queue | Grade assignment submissions | Two-panel list + detail; ungraded → AI reviewed → graded states; Save Draft / Publish Grade |
+| WEB-A10 | Course Analytics | Course engagement data | Drop-off funnel; video watch heatmap; quiz stats per question; student progress histogram |
+| WEB-A11 | Batch / Cohort Management | Manage cohorts | Tabs: Roster / Timetable / Live Sessions / Announcements |
+| WEB-A12 | Announcements | Send communications | Compose with rich text; audience selector; schedule send; delivery stats |
+| WEB-A13 | AI Configuration | Per-course AI settings | Feature toggles; tone (encouraging/neutral/academic); system prompt override; token budget + log |
+| WEB-A14 | Payment & Billing | Revenue and coupons | Tabs: Transactions (refund action) / Revenue (charts) / Coupons (create + manage) |
+| WEB-A15 | Platform Settings | Global configuration | Sections: General / Authentication / Email / Integrations (Mux, Stripe, Zoom) |
+| WEB-A16 | Moderation Queue | Review flagged content | Table of flagged posts; View in Context / Dismiss Flag / Delete Post actions |
+| WEB-A17 | Certificate Request Queue | Manual cert approval | Table; Approve & Issue / Reject (with required reason) per row |
+| WEB-A18 | Student Detail (Admin) | Student profile view | Enrollments; quiz history; assignment submissions; badges; role management; remove from platform |
+
+---
+
+### 13.6 Mobile Screen Inventory
+
+#### Onboarding & Auth
+
+| ID | Screen | Notes |
+| --- | --- | --- |
+| MOB-O1 | Splash / Onboarding | 3-screen carousel; first-launch only; "Skip" on screens 1–2; "Get Started" on screen 3 |
+| MOB-O2 | Login | Keyboard-aware layout; email + password; Google OAuth; forgot password link |
+| MOB-O3 | Register | Full name, email, password; Google OAuth; terms acknowledgement |
+| MOB-O4 | Email Verification Prompt | Illustration; "Check your email"; resend and change email options |
+| MOB-O5 | Forgot / Reset Password | Two-screen flow matching web equivalents |
+
+#### Tab Screens
+
+| ID | Screen | Tab | Notes |
+| --- | --- | --- | --- |
+| MOB-H1 | Home / Dashboard | Home | Continue learning cards (1–2); upcoming session widget; announcements; recommended courses |
+| MOB-E1 | Course Catalog | Explore | Search bar always visible; filter chips (horizontal scroll); infinite scroll course list |
+| MOB-E2 | Course Detail | Explore | Tabs: Overview / Curriculum / Reviews; sticky bottom bar with enroll/buy/continue CTA |
+| MOB-L1 | My Learning | My Learning | Tabs: In Progress / Completed / Bookmarks |
+| MOB-N1 | Notifications | Notifications | Sorted by recency; unread dot; pull-to-refresh; "Mark all read" in top-right menu |
+| MOB-PR1 | Profile | Profile | Avatar, display name, headline; stat row; nav list (certificates, calendar, settings, logout) |
+| MOB-PR2 | My Certificates | Profile | Certificate cards; download PDF; share / copy verification link |
+| MOB-PR3 | Calendar | Profile | Week view default; tap session → detail sheet with join link; iCal export |
+| MOB-PR4 | Account Settings | Profile | Display name, avatar, bio; email/password change; connected accounts; notification toggles |
+
+#### Lesson Player Screens (full-screen, pushed from any tab)
+
+| ID | Screen | Notes |
+| --- | --- | --- |
+| MOB-LP1 | Lesson Player Shell | Top bar (back, title, progress); content area; prev/next bottom bar; "Contents" opens bottom sheet |
+| MOB-LP2 | Video Lesson | 16:9 player; tap for controls; double-tap seek; landscape full-screen; transcript; notes; resources; discussion |
+| MOB-LP3 | Text Lesson | Scrollable rich text; notes; discussion section; mark complete button |
+| MOB-LP4 | Quiz | One question per screen; shrinking timer bar; swipe or tap Next/Prev; results screen scrollable |
+| MOB-LP5 | Assignment Submission | Collapsible instructions + rubric; text editor; system file picker / camera; submission history below |
+| MOB-LP6 | Discussion | "View Discussion" opens full-screen modal; compose pinned to bottom; keyboard-aware |
+| MOB-LP7 | AI Course Assistant | Floating button → full-screen chat; streaming response with citations; back to lesson |
+
+---
+
+### 13.7 Key User Flows
+
+These 9 flows must be wired up end-to-end in the interactive prototype and are the basis for E2E test journeys.
+
+#### Flow 1 — New Student: Sign Up and Enroll
+
+```
+WEB-P1 (Landing) → WEB-P2 (Catalog) → WEB-P3 (Course Detail)
+  → WEB-P5 (Register) → email verification → WEB-P3 (enrolled state)
+  → WEB-S1 (Dashboard) or WEB-S2 (first lesson)
+```
+
+#### Flow 2 — Student: Daily Learning Session
+
+```
+WEB-S1 (Dashboard) → "Continue" → WEB-S2 (Course Player Shell)
+  → WEB-S3 (Video Lesson) → auto-mark complete at 80%
+  → WEB-S5 (Quiz) → submit → results + AI feedback
+  → WEB-S6 (Assignment) → submit → State B (feedback pending)
+```
+
+#### Flow 3 — Student: Purchase a Paid Course
+
+```
+WEB-P3 (Course Detail) → "Buy Now" → WEB-P4 (Login) if not logged in
+  → Stripe Checkout → success screen → WEB-S2 (Course Player, first lesson)
+```
+
+#### Flow 4 — Student: Use the AI Course Assistant
+
+```
+Any lesson (WEB-S3 / WEB-S4) → floating AI button → WEB-S8 (panel slides in)
+  → type question → streaming response word-by-word
+  → citations appear ("Source: Chapter 1 > Lesson 2") → click citation → navigate to lesson
+```
+
+#### Flow 5 — Student: Earn and Download a Certificate
+
+```
+Final lesson marked complete → eligibility check → certificate auto-issued
+  → toast + notification + email → WEB-S10 (My Certificates)
+  → "Download PDF" / copy verification link → WEB-P7 (/verify/[token])
+```
+
+#### Flow 6 — Admin: Create and Publish a Course
+
+```
+WEB-A1 (Admin Dashboard) → "Create New Course" → WEB-A3 (Course Settings)
+  → fill metadata → Save as Draft → WEB-A4 (Content Builder)
+  → add chapters + lessons → WEB-A5 (Lesson Editor) → upload video → save
+  → back to WEB-A3 → toggle status "Published" → course live in WEB-P2
+```
+
+#### Flow 7 — Admin: Grade a Submission
+
+```
+WEB-A9 (Grading Queue) → click submission
+  → read content + review AI feedback card
+  → fill rubric scores (auto-totaled) → write feedback text
+  → "Save Draft" → review → "Publish Grade"
+  → student notification fires → submission leaves ungraded queue
+```
+
+#### Flow 8 — Mobile: Continue Learning On the Go
+
+```
+App open → MOB-H1 (Home) → "Continue" → MOB-LP1 (Lesson Player)
+  → MOB-LP2 (Video Lesson) → resumes at last position
+  → watch to completion → auto-mark complete
+  → "Next Lesson" → rotate device → full-screen landscape → rotate back
+  → progress syncs to web in real time
+```
+
+#### Flow 9 — Mobile: Receive Notification and Act On It
+
+```
+Push notification: "Your assignment has been graded"
+  → tap → MOB-LP5 (Assignment Submission — State D: fully graded)
+  → read AI + human feedback + grade
+  → tap Discussion → MOB-LP6 (Discussion full-screen modal) → post follow-up
+```
+
+---
+
+### 13.8 Interaction & UX Patterns
+
+Consistent patterns used across multiple screens. Implement these as reusable components.
+
+#### Progress Indicators
+
+- **Lesson completion dot:** empty circle (not started), half-filled (in progress), filled checkmark (complete)
+- **Course progress bar:** always displays percentage numerically alongside the bar — never a bar with no number
+- **Chapter completion:** fraction in sidebar ("3/5 lessons") + mini progress bar per chapter header
+- **Video scrub bar:** secondary colored marker shows the student's previous watch position on load
+
+#### Loading & Skeleton States
+
+- All async content (AI feedback, submissions, course lists) shows a skeleton loader — never a spinner over blank space
+- AI responses stream word-by-word (typewriter effect); while awaiting first token, show three animated dots ("thinking")
+- Video upload shows stepped progress: Uploading (nn%) → Processing → Generating Transcript → Ready
+
+#### Empty States
+
+Every list or content area that can be empty needs a designed empty state: icon or illustration + friendly message + CTA where applicable.
+
+| Context | Message | CTA |
+| --- | --- | --- |
+| No enrolled courses | "You haven't enrolled in any courses yet." | Browse Courses |
+| No notifications | "You're all caught up." | — |
+| No ungraded submissions | "No ungraded submissions. Nice work." | — |
+| No bookmarks | "Bookmark lessons you want to revisit." | — |
+| No certificates | "Complete a course to earn your first certificate." | Browse Courses |
+
+#### Modals and Confirmation Dialogs
+
+- Destructive actions (delete, remove student, revoke access, refund) require a confirmation modal: description + "Cancel" + red-colored confirm button
+- Non-destructive actions (enroll student, apply coupon, export) complete immediately — no confirmation required
+
+#### Toast Notifications
+
+Short-lived messages at the top (web) or bottom (mobile) of the screen. Auto-dismiss after 4 seconds or on tap/click.
+
+| Type | Color | Example |
+| --- | --- | --- |
+| Success | Green | "Course published successfully." |
+| Error | Red | "Upload failed. Please try again." |
+| Info | Neutral | "AI feedback is being generated. We'll notify you when it's ready." |
+
+#### The AI Feedback Card
+
+Used in WEB-S5 (quiz results), WEB-S6 (assignment), and WEB-A9 (grading queue).
+
+- Visually distinct from human feedback: "AI Feedback" label with sparkle icon
+- Slightly different background or border treatment vs human-authored content
+- Per-criterion breakdown as a list — not a wall of text
+- Tone is always constructive — never punitive
+
+#### Locked Lessons
+
+When a course enforces sequential order and a lesson is not yet unlocked:
+
+- Padlock icon in the sidebar
+- Visually desaturated / dimmed
+- On click: tooltip — "Complete [previous lesson name] to unlock this."
+- Never renders as a 404 or generic error page
+
+#### Real-Time Updates (no page refresh)
+
+- Unread notification badge in nav updates live (WebSocket / SSE)
+- Assignment "feedback pending" state updates to "feedback ready" when the background Celery job completes
+- Lesson completion updates the course sidebar immediately on mark-complete
+
+#### File Upload Zones
+
+- Drag-and-drop with visual feedback (border highlight on drag-over)
+- Shows accepted file types and max size below the zone
+- After upload: file name + size + type icon + remove button
+- Uploading state: progress bar within the zone
+- Error state: red border + error message + "Try again" option
+
+---
+
+### 13.9 Brand Direction
+
+> Derived from the existing xoxoeducation.com site. CSS custom properties extracted directly from the production stylesheet.
+
+```
+Primary color:        #F5A623  — warm amber    (hsl 38 92% 56%)
+Secondary color:      #355E87  — mid navy      (hsl 210 44% 37%)
+Accent / CTA color:   #F0621D  — burnt orange  (hsl 20 89% 53%)
+Dark surface:         #2C4A5C  — deep navy     (hsl 204 32% 26%)
+Background (light):   #FFFFFF  — white
+Background (dark):    #0F1C24  — dark navy
+Text / Neutral scale: #333333 (primary) · #666666 (muted) · #999999 (placeholder) · #FAFAFA (on-dark)
+Border color:         #E5E7EB
+
+Primary typeface:     Inter (Google Fonts / next/font) — all weights
+Secondary typeface:   Inter (same family; weight and size variation handles hierarchy)
+Heading scale:        4xl (2.25rem) / 3xl (1.875rem) / 2xl (1.5rem) / xl (1.25rem) — font-weight 700
+Body size:            16px base; 18px for long-form lesson content (text lessons, transcripts)
+Mono (code blocks):   JetBrains Mono or ui-monospace fallback
+
+Border radius style:  Soft — 0.5rem base (matches existing site's --radius)
+Icon set:             Lucide Icons (shadcn/ui default; open source; consistent stroke weight)
+Illustration style:   Photographic — real community/student photography as on existing site;
+                      lips motifs from existing /lips/ image series carried into LMS as
+                      course-level badges (beginner · intermediate · advanced)
+Logo usage rules:     logo-1.png (portrait, 252×356) for stacked/icon contexts;
+                      logo-2.png (landscape, 481×220) for nav bars and horizontal layouts;
+                      always render via <Logo /> component — never reference files directly
+
+Tone / mood:          Warm, purposeful, human. Education as transformation, not just skill delivery.
+                      Students are whole people. Never cold, never corporate, never gamified-for-
+                      engagement's-sake.
+Visual references:    xoxoeducation.com (community warmth + colour palette);
+                      Notion (calm, focused reading experience for lesson content);
+                      Duolingo (progress energy and visibility — not the cartoon style)
+What to avoid:        Purple gradients, generic SaaS blue, cold tech aesthetics, stock-photo
+                      diversity theater, anything that feels like a B2B dashboard
+```
+
+**Color-to-UI mapping:**
+
+| UI context | Color |
+| --- | --- |
+| Primary CTA buttons ("Enroll", "Continue", "Submit") | Amber `#F5A623` |
+| CTA hover / pressed state | Burnt orange `#F0621D` |
+| Links, nav active states, secondary actions | Navy `#355E87` |
+| Admin panel sidebar + structural chrome | Deep navy `#2C4A5C` |
+| Progress bars, completion checkmarks, lesson dots | Amber `#F5A623` |
+| AI feedback card accent | Navy `#355E87` border + amber sparkle icon |
+| Lesson sidebar active-lesson indicator | Amber 3px left border |
+| Course level badges (beginner / intermediate / advanced) | Lips motifs from `/lips/` image series |
+| Certificate accent | Amber + navy |
+| Destructive actions (delete, remove) | `#EF4444` (Tailwind red-500) |
+
+**Breakpoints:**
+
+- `375px` — mobile
+- `768px` — tablet (filter sidebars collapse to drawers; course player sidebar becomes slide-in)
+- `1280px` — desktop
+
+### 13.10 Design System Implementation
+
+The web client implements the brand via a layered token system:
+
+```
+CSS custom properties (globals.css)
+  → Tailwind utilities (tailwind.config.ts)
+    → UI components (src/components/ui/)
+      → Pages
+```
+
+**Token naming:**
+
+| Layer | Example |
+| --- | --- |
+| CSS variable | `--brand-primary: #F5A623` |
+| Tailwind utility | `bg-brand-primary`, `text-content-secondary` |
+| Dark mode | `.dark {}` block in `globals.css` swaps surface/content tokens; brand colors unchanged |
+
+**UI component library:** Built from scratch using `class-variance-authority` (variants), `@radix-ui/react-slot` (`asChild` pattern), and `tailwind-merge` (`cn()` helper). Components live in `src/components/ui/` and mirror the shadcn/ui API.
+
+> **Why not shadcn CLI?** `shadcn@latest` (v4+) requires Tailwind v4 and uses OKLCH color space + `@base-ui/react` — incompatible with this project's Tailwind v3. Do **not** run `npx shadcn@latest add` or `npx shadcn@latest init`. Add new components manually following the existing pattern in `src/components/ui/`.
+
+**Logo files:** `public/logo/logo-1.png` (252×356, portrait) · `public/logo/logo-2.png` (481×220, landscape). Use `<Logo />` from `src/components/layout/Logo.tsx`. Always pass `height` — width is computed automatically from the intrinsic aspect ratio.
 
 ### Running tests
 
@@ -2123,3 +2636,170 @@ A feature is done when **all** of the following are true:
 | **CI green** | All CI checks passing (lint, types, unit tests, integration tests) |
 | **Deployed** | Merged to `main` and deployed to staging; smoke test on staging passes |
 | **Docs** | Any non-obvious decisions documented in inline comments or ADR |
+
+---
+
+## 14. Deployment & Domain Configuration
+
+> This section covers where the web and mobile clients are deployed, how the domain `xoxoeducation.com` is configured, and what is needed before the first production release.
+
+---
+
+### 14.1 Domain & DNS
+
+**Domain:** `xoxoeducation.com` — registered on Namecheap.
+
+**Action required:** Migrate nameserver management from Namecheap to Cloudflare (free plan). This consolidates DNS for the domain alongside Cloudflare's existing role as CDN, video delivery proxy, and DDoS layer.
+
+**Migration steps:**
+
+1. Add `xoxoeducation.com` as a new site in the Cloudflare dashboard (free plan).
+2. Cloudflare scans and imports existing Namecheap DNS records automatically.
+3. Cloudflare provides two nameserver hostnames (e.g. `ns1.cloudflare.com`, `ns2.cloudflare.com`).
+4. In Namecheap → Domain List → Manage → Nameservers → select **Custom DNS** → paste Cloudflare's nameservers.
+5. Propagation completes within minutes to a few hours.
+
+**Subdomain structure:**
+
+| Subdomain | Points to | Cloudflare proxy | Purpose |
+| --- | --- | --- | --- |
+| `xoxoeducation.com` | Vercel | Orange-cloud (Full strict SSL) or grey-cloud | Next.js web app |
+| `www.xoxoeducation.com` | Redirect to apex | — | Handled by Vercel redirect rule |
+| `api.xoxoeducation.com` | Railway / Render backend | **Orange-cloud** | FastAPI — Cloudflare absorbs DDoS before it reaches the origin |
+
+> **SSL mode:** Set Cloudflare SSL/TLS mode to **Full (strict)** when orange-cloud proxying is enabled for the Vercel apex domain. This instructs Cloudflare to validate Vercel's origin SSL certificate end-to-end. If any issue arises, switching to grey-cloud (DNS only) is safe — Vercel's own global edge network handles SSL and CDN independently.
+
+---
+
+### 14.2 Web App — Vercel
+
+**Why Vercel:** The canonical host for Next.js 14 App Router. SSR, ISR, edge middleware (used for auth redirects), and preview deployments are all first-class features — no adapter or configuration required.
+
+**Vercel project setup:**
+
+1. Import the GitHub repository into Vercel; set the root directory to `web-client/`.
+2. Framework preset: **Next.js** (auto-detected).
+3. Add the custom domain `xoxoeducation.com` in Vercel → Project → Domains.
+4. Vercel provides the DNS record values (A + CNAME) — add these in Cloudflare.
+
+**Deployment branches:**
+
+| Git branch | Vercel environment | URL |
+| --- | --- | --- |
+| `main` | Production | `xoxoeducation.com` |
+| `staging` | Preview (promoted) | `staging.xoxoeducation.com` (optional) |
+| Any PR branch | Preview (auto) | `xoxoedu-pr-42.vercel.app` |
+
+PR preview deployments let the designer review every screen against the design spec before code is merged to `main`.
+
+**Environment variables (set per Vercel environment):**
+
+| Variable | Production value | Preview / Staging value |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `https://api.xoxoeducation.com` | Staging API URL |
+| `NEXT_PUBLIC_STRIPE_KEY` | Stripe live publishable key | Stripe test publishable key |
+| `NEXT_PUBLIC_POSTHOG_KEY` | Production analytics key | Test / dev key |
+| `NEXT_PUBLIC_MUX_ENV_KEY` | Mux production data key | Mux dev data key |
+
+Sensitive server-side variables (no `NEXT_PUBLIC_` prefix) are not exposed to the browser.
+
+**CI/CD:** GitHub Actions runs lint, type check, and tests on every PR. On merge to `main`, Vercel deploys automatically via its GitHub integration — no separate deploy step needed in Actions.
+
+---
+
+### 14.3 Mobile App — Expo EAS
+
+**Build service: Expo EAS Build**
+
+EAS Build runs iOS and Android builds in the cloud, eliminating the need for a local Mac with Xcode for iOS builds or a local Android Studio setup. Builds are triggered from the CLI or from CI.
+
+```bash
+# Install EAS CLI
+npm install -g eas-cli
+
+# Log in to Expo account
+eas login
+
+# Configure the project (run once)
+eas build:configure
+
+# Trigger a production build
+eas build --platform all --profile production
+```
+
+**EAS configuration (`eas.json` in `mobile-client/`):**
+
+```json
+{
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "ios": { "simulator": false }
+    },
+    "production": {
+      "autoIncrement": true
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": { "appleId": "your@email.com", "ascAppId": "XXXXXXX" },
+      "android": { "serviceAccountKeyPath": "./google-service-account.json", "track": "production" }
+    }
+  }
+}
+```
+
+**OTA updates: Expo EAS Update**
+
+JavaScript bundle changes (bug fixes, content updates, UI tweaks) can be pushed to all installed apps without a store submission. Only changes to native code (new permissions, new native modules) require a full build + store review.
+
+```bash
+# Push an OTA update to the production channel
+eas update --channel production --message "Fix quiz submission race condition"
+```
+
+> Use OTA updates aggressively for post-launch fixes. Reserve full store submissions for native changes and major releases. This is the single biggest advantage of an Expo-managed workflow over bare React Native.
+
+**Store accounts required:**
+
+| Store | Account | Cost | Action |
+| --- | --- | --- | --- |
+| Apple App Store | Apple Developer Program | $99/year | Create at [developer.apple.com](https://developer.apple.com); required for TestFlight beta testing too |
+| Google Play Store | Google Play Console | $25 one-time | Create at [play.google.com/console](https://play.google.com/console) |
+
+**TestFlight / Internal testing:**
+
+Use the `preview` EAS build profile to distribute to internal testers via TestFlight (iOS) and the Play Store internal track (Android) before each production release.
+
+---
+
+### 14.4 Email DNS Records
+
+Required before any transactional email (verification, notifications, certificates) will reliably reach inboxes. All three records are added in Cloudflare DNS. Resend or Postmark provide the exact values during their setup flow.
+
+| Record type | Host | Purpose | When to add |
+| --- | --- | --- | --- |
+| **SPF** | `@` (TXT) | Authorises Resend/Postmark to send on behalf of `xoxoeducation.com` | Before Sprint 1 goes live |
+| **DKIM** | Provider-specific subdomain (TXT) | Cryptographic signature on outgoing email | Before Sprint 1 goes live |
+| **DMARC** | `_dmarc` (TXT) | Policy for unauthenticated email; start with `p=none` (monitor), move to `p=quarantine` post-launch | Before Sprint 1 goes live |
+
+> Without SPF + DKIM, email verification links and assignment feedback notifications will be silently dropped or spam-foldered by Gmail and Outlook — the two dominant email clients for the student audience.
+
+---
+
+### 14.5 Cost Summary (Early Stage)
+
+| Service | Plan | Cost | Notes |
+| --- | --- | --- | --- |
+| Vercel | Hobby → Pro | $0 → $20/mo | Start on Hobby; upgrade to Pro when you need team members or commercial use |
+| Cloudflare DNS + proxy | Free | $0 | DNS management, DDoS, WAF, SSL — all on the free plan |
+| Cloudflare R2 + CDN | Usage-based | ~$0–15/mo | $0.015/GB storage; egress via CDN is free |
+| Expo EAS Build | Free → Production | $0 → $99/mo | Free tier has slower build queues; Production adds concurrency and priority |
+| Expo EAS Update | Included | — | Included in EAS plans; 1,000 monthly active users free |
+| Apple Developer Program | Annual | $99/year | Required for App Store + TestFlight from day 1 |
+| Google Play Console | One-time | $25 | One-time registration fee |
+| **Estimated early-stage total** | | **~$150–250/year** | Excluding backend (Railway/Render) costs |

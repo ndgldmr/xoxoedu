@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+@layer base {
+  :root {
+    /* ── XOXO Brand tokens ───────────────────────────────────────────
+       Primary source of truth for all colors. Referenced by Tailwind
+       utilities via tailwind.config.ts.
+    ────────────────────────────────────────────────────────────── */
+
+    /* Brand palette */
+    --brand-primary:        #F5A623;
+    --brand-primary-hover:  #F0621D;
+    --brand-secondary:      #355E87;
+    --brand-dark:           #2C4A5C;
+
+    /* Surfaces */
+    --surface-base:         #FFFFFF;
+    --surface-raised:       #F9FAFB;
+    --surface-overlay:      #F3F4F6;
+
+    /* Content / text */
+    --content-primary:      #333333;
+    --content-secondary:    #666666;
+    --content-muted:        #999999;
+    --content-inverted:     #FAFAFA;
+
+    /* Border */
+    --border-color:         #E5E7EB;
+
+    /* Shape */
+    --radius:               0.5rem;
+  }
+
+  .dark {
+    /* Surfaces flip to dark navy */
+    --surface-base:         #0F1C24;
+    --surface-raised:       #162531;
+    --surface-overlay:      #1E3040;
+
+    /* Content flips */
+    --content-primary:      #FAFAFA;
+    --content-secondary:    #CCCCCC;
+    --content-muted:        #888888;
+    --content-inverted:     #333333;
+
+    /* Border darkens */
+    --border-color:         #2C4A5C;
+
+    /* Brand stays the same in dark mode */
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-surface-base text-content-primary font-sans antialiased;
+  }
+}
