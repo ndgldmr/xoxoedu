@@ -11,6 +11,8 @@ from app.db.models.user import User
 from app.db.session import get_db
 from app.modules.admin import service
 from app.modules.admin.schemas import RoleUpdateIn
+from app.modules.assignments import service as assignment_service
+from app.modules.assignments.schemas import AssignmentIn
 from app.modules.auth.schemas import UserOut
 from app.modules.courses import service as course_service
 from app.modules.courses.schemas import (
@@ -27,6 +29,8 @@ from app.modules.courses.schemas import (
     ResourceCreateIn,
     ResourceOut,
 )
+from app.modules.quizzes import service as quiz_service
+from app.modules.quizzes.schemas import QuizIn
 
 router = APIRouter(prefix="/admin", tags=["admin"], dependencies=[require_role(Role.ADMIN)])
 
@@ -199,3 +203,27 @@ async def attach_resource(
     """Attach a downloadable resource file to a lesson."""
     resource = await course_service.attach_resource(db, lesson_id, body)
     return ok(ResourceOut.model_validate(resource).model_dump())
+
+
+# ── Quizzes ─────────────────────────────────────────────────────────────────────
+
+@router.post("/quizzes", status_code=201)
+async def create_quiz(
+    data: QuizIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a quiz with questions on a lesson."""
+    quiz = await quiz_service.create_quiz(db, data)
+    return ok(quiz.model_dump())
+
+
+# ── Assignments ─────────────────────────────────────────────────────────────────
+
+@router.post("/assignments", status_code=201)
+async def create_assignment(
+    data: AssignmentIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create an assignment on a lesson."""
+    assignment = await assignment_service.create_assignment(db, data)
+    return ok(assignment.model_dump())

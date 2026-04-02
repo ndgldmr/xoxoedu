@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""
-Interactive .env setup script.
+"""Interactive .env setup script.
 
-Generates RSA keys and secret key automatically.
-Prompts for credentials that must come from external services.
+Reads an existing .env file and uses its values as prompt defaults, so
+re-running the script does not overwrite anything unless you type a new value.
+
+RSA keys and SECRET_KEY are only (re-)generated when they are absent from
+the existing file.
 
 Usage:
     uv run scripts/setup_env.py
@@ -14,15 +16,39 @@ from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
 ENV_FILE = ROOT / ".env"
-ENV_EXAMPLE = ROOT / ".env.example"
 
 
-def generate_rsa_keypair() -> tuple[str, str]:
+def _parse_env(path: Path) -> dict[str, str]:
+    """Parse a .env file into a key → value dict.
+
+    Lines that are blank or start with ``#`` are skipped.  Inline comments
+    are not stripped — the raw value (including surrounding quotes) is kept
+    so it can be written back verbatim.
+
+    Args:
+        path: Path to the ``.env`` file to parse.
+
+    Returns:
+        A dict mapping variable names to their raw string values.
+    """
+    result: dict[str, str] = {}
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        result[key.strip()] = value.strip()
+    return result
+
+
+def _generate_rsa_keypair() -> tuple[str, str]:
     """Generate an RSA-2048 keypair formatted for single-line .env storage.
 
     Returns:
-        A tuple of ``(private_pem, public_pem)`` where newlines have been
-        escaped to ``\\n`` so each value fits on a single ``.env`` line.
+        A ``(private_pem, public_pem)`` tuple with newlines escaped to
+        ``\\n`` so each value fits on a single ``.env`` line.
     """
     from cryptography.hazmat.primitives import serialization
     from cryptography.hazmat.primitives.asymmetric import rsa
@@ -40,24 +66,28 @@ def generate_rsa_keypair() -> tuple[str, str]:
     return private_pem.replace("\n", "\\n"), public_pem.replace("\n", "\\n")
 
 
-def prompt(label: str, default: str = "", secret: bool = False) -> str:
+def _prompt(label: str, default: str = "", secret: bool = False) -> str:
     """Display an interactive prompt and return the user's input.
 
-    If the user submits an empty string, *default* is returned instead.
-    When *secret* is ``True``, ``getpass`` is used so the input is not echoed
-    to the terminal.
+    Pressing Enter without typing anything returns *default* unchanged.
+    When *secret* is ``True``, ``getpass`` is used so input is not echoed.
 
     Args:
-        label: Human-readable prompt label displayed to the user.
-        default: Value returned if the user presses Enter without typing anything.
-        secret: If ``True``, hide input (useful for passwords and API keys).
+        label: Human-readable prompt label.
+        default: Value returned when the user submits an empty string.
+        secret: When ``True``, hide the typed input.
 
     Returns:
         The trimmed user input, or *default* if the input was empty.
     """
+    # Truncate long defaults (e.g. PEM keys) so they don't flood the terminal
+    display_default = default
+    if default and len(default) > 40:
+        display_default = default[:20] + "…" + default[-8:]
+
     display = f"  {label}"
-    if default:
-        display += f" [{default}]"
+    if display_default:
+        display += f" [{display_default}]"
     display += ": "
 
     if secret:
@@ -72,68 +102,146 @@ def prompt(label: str, default: str = "", secret: bool = False) -> str:
 def main() -> None:
     """Run the interactive environment setup wizard and write a ``.env`` file.
 
-    Generates the RSA keypair and a random ``SECRET_KEY`` automatically, then
-    prompts for external service credentials (Postgres, Google OAuth, Resend).
-    If a ``.env`` file already exists, the user is asked to confirm before it
-    is overwritten.
+    Reads any existing ``.env`` and uses its values as defaults.  Only fields
+    that are absent (or explicitly overwritten by the user) are changed.
+    RSA keys and ``SECRET_KEY`` are generated only when not already present.
     """
     print("\nxoxo Education — Environment Setup\n" + "=" * 36)
 
+    # Load existing values so they become prompt defaults
+    existing: dict[str, str] = {}
     if ENV_FILE.exists():
-        overwrite = input("\n.env already exists. Overwrite? [y/N]: ").strip().lower()
-        if overwrite != "y":
-            print("Aborted.")
-            sys.exit(0)
+        existing = _parse_env(ENV_FILE)
+        print(f"\nFound existing .env at {ENV_FILE}")
+        print("  Press Enter at any prompt to keep the current value.\n")
+    else:
+        print("\nNo .env found — creating a new one.\n")
 
-    print("\nGenerating RSA keypair for JWT signing...")
-    private_key, public_key = generate_rsa_keypair()
-    print("  Done.")
+    # ── JWT keys ───────────────────────────────────────────────────────────────
+    private_key = existing.get("JWT_PRIVATE_KEY", "").strip('"')
+    public_key = existing.get("JWT_PUBLIC_KEY", "").strip('"')
 
-    secret_key = secrets.token_hex(32)
-    print("  Secret key generated.")
+    if private_key and public_key:
+        print("JWT RSA keypair: already present — keeping existing keys.")
+    else:
+        print("Generating RSA-2048 keypair for JWT signing...")
+        private_key, public_key = _generate_rsa_keypair()
+        print("  Done.")
 
+    # ── Secret key ─────────────────────────────────────────────────────────────
+    secret_key = existing.get("SECRET_KEY", "")
+    if secret_key:
+        print("SECRET_KEY: already present — keeping existing value.")
+    else:
+        secret_key = secrets.token_hex(32)
+        print("SECRET_KEY generated.")
+
+    # ── Database ───────────────────────────────────────────────────────────────
     print("\n--- Database (defaults work with docker compose up) ---")
-    db_host = prompt("Postgres host", "localhost")
-    db_port = prompt("Postgres port", "5432")
-    db_name = prompt("Postgres database name", "xoxoedu")
-    db_user = prompt("Postgres user", "postgres")
-    db_pass = prompt("Postgres password", "postgres")
 
+    # Parse host/port/name/user/pass from existing DATABASE_URL if present
+    _existing_url = existing.get("DATABASE_URL", "")
+    _db_defaults = {"host": "localhost", "port": "5432", "name": "xoxoedu",
+                    "user": "postgres", "pass": "postgres"}
+    if _existing_url:
+        # postgresql+asyncpg://user:pass@host:port/name
+        try:
+            import re
+            m = re.match(
+                r"postgresql(?:\+asyncpg)?://([^:]+):([^@]+)@([^:]+):(\d+)/(\S+)",
+                _existing_url,
+            )
+            if m:
+                _db_defaults = {
+                    "user": m.group(1), "pass": m.group(2),
+                    "host": m.group(3), "port": m.group(4), "name": m.group(5),
+                }
+        except Exception:
+            pass
+
+    db_host = _prompt("Postgres host", _db_defaults["host"])
+    db_port = _prompt("Postgres port", _db_defaults["port"])
+    db_name = _prompt("Postgres database name", _db_defaults["name"])
+    db_user = _prompt("Postgres user", _db_defaults["user"])
+    db_pass = _prompt("Postgres password", _db_defaults["pass"], secret=True)
+
+    # ── Google OAuth2 ──────────────────────────────────────────────────────────
     print("\n--- Google OAuth2 ---")
     print("  Get these from console.cloud.google.com > APIs & Services > Credentials")
-    google_client_id = prompt("GOOGLE_CLIENT_ID")
-    google_client_secret = prompt("GOOGLE_CLIENT_SECRET", secret=True)
-    google_redirect_uri = prompt(
-        "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback"
+    google_client_id = _prompt(
+        "GOOGLE_CLIENT_ID", existing.get("GOOGLE_CLIENT_ID", "")
+    )
+    google_client_secret = _prompt(
+        "GOOGLE_CLIENT_SECRET", existing.get("GOOGLE_CLIENT_SECRET", ""), secret=True
+    )
+    google_redirect_uri = _prompt(
+        "GOOGLE_REDIRECT_URI",
+        existing.get(
+            "GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/auth/google/callback"
+        ),
     )
 
+    # ── Resend ─────────────────────────────────────────────────────────────────
     print("\n--- Resend (email) ---")
     print("  Get your API key from resend.com/api-keys")
-    resend_api_key = prompt("RESEND_API_KEY", secret=True)
-    email_from = prompt("EMAIL_FROM (must be a verified Resend domain)", "noreply@xoxoedu.com")
+    resend_api_key = _prompt(
+        "RESEND_API_KEY", existing.get("RESEND_API_KEY", ""), secret=True
+    )
+    email_from = _prompt(
+        "EMAIL_FROM (must be a verified Resend domain)",
+        existing.get("EMAIL_FROM", "noreply@xoxoedu.com"),
+    )
 
+    # ── Cloudflare R2 ──────────────────────────────────────────────────────────
+    print("\n--- Cloudflare R2 (optional — required for assignment file uploads) ---")
+    print("  Create an API token at dash.cloudflare.com > R2 > Manage R2 API Tokens")
+    print("  Press Enter to leave blank; the API will start but upload endpoints")
+    print("  will return UPLOAD_FAILED until credentials are set.")
+    r2_account_id = _prompt(
+        "R2_ACCOUNT_ID", existing.get("R2_ACCOUNT_ID", "")
+    )
+    r2_access_key_id = _prompt(
+        "R2_ACCESS_KEY_ID", existing.get("R2_ACCESS_KEY_ID", ""), secret=True
+    )
+    r2_secret_access_key = _prompt(
+        "R2_SECRET_ACCESS_KEY", existing.get("R2_SECRET_ACCESS_KEY", ""), secret=True
+    )
+    r2_bucket = _prompt(
+        "R2_BUCKET", existing.get("R2_BUCKET", "xoxoedu-uploads")
+    )
+    r2_public_url = _prompt(
+        "R2_PUBLIC_URL (optional custom domain, e.g. https://assets.xoxoedu.com)",
+        existing.get("R2_PUBLIC_URL", ""),
+    )
+
+    # ── App ────────────────────────────────────────────────────────────────────
     print("\n--- App ---")
-    frontend_url = prompt("FRONTEND_URL", "http://localhost:3000")
+    frontend_url = _prompt(
+        "FRONTEND_URL", existing.get("FRONTEND_URL", "http://localhost:3000")
+    )
 
+    # ── Build DATABASE_URL ─────────────────────────────────────────────────────
     database_url = f"postgresql+asyncpg://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
     database_url_sync = f"postgresql://{db_user}:{db_pass}@{db_host}:{db_port}/{db_name}"
 
+    # ── Write .env ─────────────────────────────────────────────────────────────
     env_content = f"""\
 # Database
 DATABASE_URL={database_url}
 DATABASE_URL_SYNC={database_url_sync}
 
 # Redis
-REDIS_URL=redis://localhost:6379/0
+REDIS_URL={existing.get("REDIS_URL", "redis://localhost:6379/0")}
 
-# JWT
+# JWT — generated by scripts/setup_env.py
+# Store PEM keys with literal \\n (not actual newlines)
 JWT_PRIVATE_KEY="{private_key}"
 JWT_PUBLIC_KEY="{public_key}"
 JWT_ALGORITHM=RS256
-ACCESS_TOKEN_EXPIRE_MINUTES=15
-REFRESH_TOKEN_EXPIRE_DAYS=30
+ACCESS_TOKEN_EXPIRE_MINUTES={existing.get("ACCESS_TOKEN_EXPIRE_MINUTES", "15")}
+REFRESH_TOKEN_EXPIRE_DAYS={existing.get("REFRESH_TOKEN_EXPIRE_DAYS", "30")}
 
-# Auth
+# Auth — 32-byte hex string
 SECRET_KEY={secret_key}
 
 # Google OAuth2
@@ -145,10 +253,20 @@ GOOGLE_REDIRECT_URI={google_redirect_uri}
 RESEND_API_KEY={resend_api_key}
 EMAIL_FROM={email_from}
 
+# Cloudflare R2 (S3-compatible object storage — used for assignment file uploads)
+# Create an API token at dash.cloudflare.com > R2 > Manage R2 API Tokens
+# Endpoint is automatically derived from account ID: https://<account_id>.r2.cloudflarestorage.com
+R2_ACCOUNT_ID={r2_account_id}
+R2_ACCESS_KEY_ID={r2_access_key_id}
+R2_SECRET_ACCESS_KEY={r2_secret_access_key}
+R2_BUCKET={r2_bucket}
+# Optional: custom public domain bound to the bucket (e.g. https://assets.xoxoedu.com)
+R2_PUBLIC_URL={r2_public_url}
+
 # App
 FRONTEND_URL={frontend_url}
-ENVIRONMENT=development
-ALLOWED_ORIGINS=["http://localhost:3000"]
+ENVIRONMENT={existing.get("ENVIRONMENT", "development")}
+ALLOWED_ORIGINS={existing.get("ALLOWED_ORIGINS", '["http://localhost:3000"]')}
 """
 
     ENV_FILE.write_text(env_content)

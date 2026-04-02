@@ -29,6 +29,11 @@ class Settings(BaseSettings):
         FRONTEND_URL: Public URL of the frontend (used in email links).
         ENVIRONMENT: Deployment stage; ``"production"`` enables stricter settings.
         ALLOWED_ORIGINS: CORS allow-list for browser clients.
+        R2_ACCOUNT_ID: Cloudflare account ID; used to derive the R2 endpoint URL.
+        R2_ACCESS_KEY_ID: R2 API token access key.
+        R2_SECRET_ACCESS_KEY: R2 API token secret key.
+        R2_BUCKET: Target R2 bucket name (default ``"xoxoedu-uploads"``).
+        R2_PUBLIC_URL: Optional custom public domain bound to the bucket.
     """
     # Database
     DATABASE_URL: str
@@ -55,6 +60,13 @@ class Settings(BaseSettings):
     # Resend
     RESEND_API_KEY: str
     EMAIL_FROM: str = "noreply@xoxoedu.com"
+
+    # Cloudflare R2 (S3-compatible object storage)
+    R2_ACCOUNT_ID: str = ""
+    R2_ACCESS_KEY_ID: str = ""
+    R2_SECRET_ACCESS_KEY: str = ""
+    R2_BUCKET: str = "xoxoedu-uploads"
+    R2_PUBLIC_URL: str = ""  # optional custom public domain bound to the bucket
 
     # App
     FRONTEND_URL: str = "http://localhost:3000"
