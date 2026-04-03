@@ -1358,21 +1358,21 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 #### Web Client Sprint W1 (parallel with Backend S1–S2)
 
-- [x] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
+- [ ] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
 
-- [x] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
+- [ ] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
 
-- [x] Auth: login page, register page, OAuth redirect, token refresh interceptor
+- [ ] Auth: login page, register page, OAuth redirect, token refresh interceptor
 
-- [x] Protected routes: middleware redirects unauthenticated users
+- [ ] Protected routes: middleware redirects unauthenticated users
 
-- [x] Course browse page: grid, filter sidebar, search
+- [ ] Course browse page: grid, filter sidebar, search
 
-- [x] Course detail page: syllabus, instructor, reviews (SSR)
+- [ ] Course detail page: syllabus, instructor, reviews (SSR)
 
-- [x] Vitest + React Testing Library setup; Playwright setup
+- [ ] Vitest + React Testing Library setup; Playwright setup
 
-- [x] CI: web lint, type check, unit tests, Playwright smoke test on every PR
+- [ ] CI: web lint, type check, unit tests, Playwright smoke test on every PR
 
 **Screens to implement (§13 design spec):** WEB-P1 (Landing), WEB-P2 (Course Catalog), WEB-P3 (Course Detail — unenrolled state), WEB-P4 (Login), WEB-P5 (Register), WEB-P6 (Forgot / Reset Password)
 
