@@ -31,7 +31,10 @@ def get_r2_client() -> object:
         import boto3
         from botocore.config import Config
 
-        endpoint = f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        endpoint = (
+            settings.R2_ENDPOINT_URL
+            or f"https://{settings.R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+        )
         _r2_client = boto3.client(
             "s3",
             endpoint_url=endpoint,

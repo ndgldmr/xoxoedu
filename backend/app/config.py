@@ -61,7 +61,8 @@ class Settings(BaseSettings):
     RESEND_API_KEY: str
     EMAIL_FROM: str = "noreply@xoxoedu.com"
 
-    # Cloudflare R2 (S3-compatible object storage)
+    # Cloudflare R2 / MinIO (S3-compatible object storage)
+    R2_ENDPOINT_URL: str = ""  # explicit endpoint; overrides the R2_ACCOUNT_ID-derived URL
     R2_ACCOUNT_ID: str = ""
     R2_ACCESS_KEY_ID: str = ""
     R2_SECRET_ACCESS_KEY: str = ""

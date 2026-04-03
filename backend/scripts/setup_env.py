@@ -192,26 +192,31 @@ def main() -> None:
         existing.get("EMAIL_FROM", "noreply@xoxoedu.com"),
     )
 
-    # ── Cloudflare R2 ──────────────────────────────────────────────────────────
-    print("\n--- Cloudflare R2 (optional — required for assignment file uploads) ---")
-    print("  Create an API token at dash.cloudflare.com > R2 > Manage R2 API Tokens")
-    print("  Press Enter to leave blank; the API will start but upload endpoints")
-    print("  will return UPLOAD_FAILED until credentials are set.")
+    # ── Object storage (R2 / MinIO) ────────────────────────────────────────────
+    print("\n--- Object storage (Cloudflare R2 in production, MinIO locally) ---")
+    print("  Local dev:  leave R2_ENDPOINT_URL as http://localhost:9000 and use")
+    print("              minioadmin credentials — docker compose starts MinIO for you.")
+    print("  Production: clear R2_ENDPOINT_URL and fill in your R2 credentials.")
+    print("              Create an API token at dash.cloudflare.com > R2 > Manage R2 API Tokens")
+    r2_endpoint_url = _prompt(
+        "R2_ENDPOINT_URL (blank = derive from R2_ACCOUNT_ID for Cloudflare R2)",
+        existing.get("R2_ENDPOINT_URL", "http://localhost:9000"),
+    )
     r2_account_id = _prompt(
-        "R2_ACCOUNT_ID", existing.get("R2_ACCOUNT_ID", "")
+        "R2_ACCOUNT_ID (leave blank for local MinIO)", existing.get("R2_ACCOUNT_ID", "")
     )
     r2_access_key_id = _prompt(
-        "R2_ACCESS_KEY_ID", existing.get("R2_ACCESS_KEY_ID", ""), secret=True
+        "R2_ACCESS_KEY_ID", existing.get("R2_ACCESS_KEY_ID", "minioadmin"), secret=True
     )
     r2_secret_access_key = _prompt(
-        "R2_SECRET_ACCESS_KEY", existing.get("R2_SECRET_ACCESS_KEY", ""), secret=True
+        "R2_SECRET_ACCESS_KEY", existing.get("R2_SECRET_ACCESS_KEY", "minioadmin"), secret=True
     )
     r2_bucket = _prompt(
         "R2_BUCKET", existing.get("R2_BUCKET", "xoxoedu-uploads")
     )
     r2_public_url = _prompt(
-        "R2_PUBLIC_URL (optional custom domain, e.g. https://assets.xoxoedu.com)",
-        existing.get("R2_PUBLIC_URL", ""),
+        "R2_PUBLIC_URL (local: http://localhost:9000/xoxoedu-uploads, prod: https://assets.xoxoedu.com)",
+        existing.get("R2_PUBLIC_URL", "http://localhost:9000/xoxoedu-uploads"),
     )
 
     # ── App ────────────────────────────────────────────────────────────────────
@@ -253,9 +258,10 @@ GOOGLE_REDIRECT_URI={google_redirect_uri}
 RESEND_API_KEY={resend_api_key}
 EMAIL_FROM={email_from}
 
-# Cloudflare R2 (S3-compatible object storage — used for assignment file uploads)
-# Create an API token at dash.cloudflare.com > R2 > Manage R2 API Tokens
-# Endpoint is automatically derived from account ID: https://<account_id>.r2.cloudflarestorage.com
+# Object storage (S3-compatible — MinIO locally, Cloudflare R2 in production)
+# Local dev: R2_ENDPOINT_URL=http://localhost:9000, credentials=minioadmin/minioadmin
+# Production: clear R2_ENDPOINT_URL; endpoint is derived from R2_ACCOUNT_ID
+R2_ENDPOINT_URL={r2_endpoint_url}
 R2_ACCOUNT_ID={r2_account_id}
 R2_ACCESS_KEY_ID={r2_access_key_id}
 R2_SECRET_ACCESS_KEY={r2_secret_access_key}
@@ -272,9 +278,10 @@ ALLOWED_ORIGINS={existing.get("ALLOWED_ORIGINS", '["http://localhost:3000"]')}
     ENV_FILE.write_text(env_content)
     print(f"\n.env written to {ENV_FILE}")
     print("\nNext steps:")
-    print("  docker compose up db redis -d")
+    print("  docker compose up db redis minio -d")
     print("  uv run alembic upgrade head")
     print("  uv run uvicorn app.main:app --reload")
+    print("  MinIO console: http://localhost:9001  (minioadmin / minioadmin)")
 
 
 if __name__ == "__main__":

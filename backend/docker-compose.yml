@@ -27,6 +27,35 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address :9001
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  createbuckets:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/xoxoedu-uploads &&
+      mc anonymous set download local/xoxoedu-uploads
+      "
+
   api:
     build: .
     env_file: .env
@@ -34,12 +63,18 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
       DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
       REDIS_URL: redis://redis:6379/0
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   worker:
@@ -50,12 +85,19 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
       DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
       REDIS_URL: redis://redis:6379/0
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
+  minio_data:

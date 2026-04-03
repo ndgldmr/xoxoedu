@@ -1513,9 +1513,11 @@ This generates RSA keys and a secret key automatically, then prompts for credent
 | --- | --- |
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials |
 | `RESEND_API_KEY` | [resend.com/api-keys](https://resend.com/api-keys) |
-| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare dashboard → R2 → Manage R2 API Tokens (optional — needed only for assignment file uploads) |
+| `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare dashboard → R2 → Manage R2 API Tokens (production only — not needed for local dev) |
 
-> The API starts without R2 credentials. File-upload endpoints return `500 UPLOAD_FAILED` if R2 is not configured.
+> **Local dev:** `docker compose up` starts MinIO automatically and wires all storage env vars for you — no R2 credentials needed. The MinIO console is available at `http://localhost:9001` (credentials: `minioadmin` / `minioadmin`).
+>
+> **Production:** Leave `R2_ENDPOINT_URL` blank; the endpoint is derived from `R2_ACCOUNT_ID`. File-upload endpoints return `500 UPLOAD_FAILED` if R2 is not configured.
 
 #### 3. Start services
 
