@@ -106,7 +106,7 @@ def main() -> None:
     that are absent (or explicitly overwritten by the user) are changed.
     RSA keys and ``SECRET_KEY`` are generated only when not already present.
     """
-    print("\nxoxo Education — Environment Setup\n" + "=" * 36)
+    print("\nXOXO Education — Environment Setup\n" + "=" * 36)
 
     # Load existing values so they become prompt defaults
     existing: dict[str, str] = {}

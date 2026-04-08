@@ -23,7 +23,7 @@ def send_verification_email(self, email: str, token: str) -> None:
         f"<p>This link expires in 24 hours.</p>"
     )
     try:
-        send_email(to=email, subject="Verify your xoxo Education account", html=html)
+        send_email(to=email, subject="Verify your XOXO Education account", html=html)
     except Exception as exc:
         raise self.retry(exc=exc) from exc
 
@@ -48,6 +48,6 @@ def send_password_reset_email(self, email: str, token: str) -> None:
         "<p>This link expires in 1 hour. If you didn't request this, ignore it.</p>"
     )
     try:
-        send_email(to=email, subject="Reset your xoxo Education password", html=html)
+        send_email(to=email, subject="Reset your XOXO Education password", html=html)
     except Exception as exc:
         raise self.retry(exc=exc) from exc
