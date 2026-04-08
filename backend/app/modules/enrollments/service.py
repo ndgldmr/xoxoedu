@@ -152,6 +152,60 @@ async def _load_enrollment_with_course(
 
 # ── Enrollment ─────────────────────────────────────────────────────────────────
 
+async def enroll_paid(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+    payment_id: uuid.UUID,
+) -> Enrollment:
+    """Create or reactivate an enrollment for a paid course after successful payment.
+
+    Unlike ``enroll()``, this bypasses the free-course check and links the
+    payment record.  Called exclusively from the Stripe webhook handler.
+
+    Args:
+        db: Async database session.
+        user_id: UUID of the student.
+        course_id: UUID of the purchased course.
+        payment_id: UUID of the completed ``Payment`` row.
+
+    Returns:
+        The active ``Enrollment`` ORM instance with course loaded.
+
+    Raises:
+        CourseNotFound: If the course does not exist.
+    """
+    course = await db.get(Course, course_id)
+    if not course:
+        raise CourseNotFound()
+
+    existing = await db.scalar(
+        select(Enrollment).where(
+            Enrollment.user_id == user_id,
+            Enrollment.course_id == course_id,
+        )
+    )
+
+    if existing:
+        if existing.status == "active":
+            return await _load_enrollment_with_course(db, existing.id)
+        existing.status = "active"
+        existing.completed_at = None
+        existing.payment_id = str(payment_id)
+        await db.commit()
+        return await _load_enrollment_with_course(db, existing.id)
+
+    enrollment = Enrollment(
+        user_id=user_id,
+        course_id=course_id,
+        status="active",
+        payment_id=str(payment_id),
+    )
+    db.add(enrollment)
+    await db.commit()
+    return await _load_enrollment_with_course(db, enrollment.id)
+
+
 async def enroll(
     db: AsyncSession, user_id: uuid.UUID, course_id: uuid.UUID
 ) -> Enrollment:
@@ -360,6 +414,10 @@ async def _maybe_complete_enrollment(
         enrollment.status = "completed"
         enrollment.completed_at = datetime.now(UTC)
         await db.commit()
+
+        # Lazy import avoids circular dependency (certificates → enrollments)
+        from app.modules.certificates import service as certificate_service
+        await certificate_service.check_and_issue(db, user_id, course_id)
 
 
 async def get_course_progress(

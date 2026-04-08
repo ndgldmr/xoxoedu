@@ -23,6 +23,8 @@ dependencies = [
     "python-multipart>=0.0.20",
     "starlette>=0.41",
     "boto3>=1.36",
+    "stripe>=11.0",
+    "weasyprint>=62.0",
 ]
 
 [dependency-groups]

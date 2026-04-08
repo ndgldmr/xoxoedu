@@ -16,4 +16,4 @@ celery_app.conf.update(
     worker_concurrency=2,
 )
 
-celery_app.autodiscover_tasks(["app.modules.auth"])
+celery_app.autodiscover_tasks(["app.modules.auth", "app.modules.certificates"])

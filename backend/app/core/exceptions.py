@@ -275,6 +275,78 @@ class UploadFailed(AppException):
     message = "File upload could not be initiated"
 
 
+class CouponNotFound(AppException):
+    """Raised when a coupon code does not match any known coupon."""
+
+    status_code = 404
+    error_code = "COUPON_NOT_FOUND"
+    message = "Coupon not found"
+
+
+class CouponExpired(AppException):
+    """Raised when the coupon's expiry date has passed."""
+
+    status_code = 400
+    error_code = "COUPON_EXPIRED"
+    message = "This coupon has expired"
+
+
+class CouponUsageExceeded(AppException):
+    """Raised when the coupon has reached its maximum redemption count."""
+
+    status_code = 400
+    error_code = "COUPON_USAGE_EXCEEDED"
+    message = "This coupon has reached its usage limit"
+
+
+class CouponNotApplicable(AppException):
+    """Raised when a coupon is scoped to specific courses and the given course is not included."""
+
+    status_code = 400
+    error_code = "COUPON_NOT_APPLICABLE"
+    message = "This coupon cannot be applied to the selected course"
+
+
+class PaymentNotFound(AppException):
+    """Raised when a payment record cannot be found."""
+
+    status_code = 404
+    error_code = "PAYMENT_NOT_FOUND"
+    message = "Payment not found"
+
+
+class InvalidWebhookSignature(AppException):
+    """Raised when a Stripe webhook payload fails signature verification."""
+
+    status_code = 400
+    error_code = "INVALID_WEBHOOK_SIGNATURE"
+    message = "Webhook signature verification failed"
+
+
+class CertificateNotFound(AppException):
+    """Raised when a certificate cannot be found by ID or verification token."""
+
+    status_code = 404
+    error_code = "CERTIFICATE_NOT_FOUND"
+    message = "Certificate not found"
+
+
+class CertificateAlreadyIssued(AppException):
+    """Raised when a certificate has already been issued for this user–course pair."""
+
+    status_code = 409
+    error_code = "CERTIFICATE_ALREADY_ISSUED"
+    message = "A certificate has already been issued for this course"
+
+
+class NotEligibleForCertificate(AppException):
+    """Raised when the student has not met the completion criteria for a certificate."""
+
+    status_code = 422
+    error_code = "NOT_ELIGIBLE_FOR_CERTIFICATE"
+    message = "You have not completed all requirements to receive a certificate"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 

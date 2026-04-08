@@ -69,6 +69,11 @@ class Settings(BaseSettings):
     R2_BUCKET: str = "xoxoedu-uploads"
     R2_PUBLIC_URL: str = ""  # optional custom public domain bound to the bucket
 
+    # Stripe
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PUBLISHABLE_KEY: str = ""
+
     # App
     FRONTEND_URL: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"
