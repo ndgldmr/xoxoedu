@@ -219,6 +219,20 @@ def main() -> None:
         existing.get("R2_PUBLIC_URL", "http://localhost:9000/xoxoedu-uploads"),
     )
 
+    # ── Stripe ─────────────────────────────────────────────────────────────────
+    print("\n--- Stripe (payments) ---")
+    print("  Get keys from dashboard.stripe.com/test/apikeys")
+    print("  Webhook secret: stripe listen --forward-to localhost:8000/api/v1/payments/webhook")
+    stripe_secret_key = _prompt(
+        "STRIPE_SECRET_KEY", existing.get("STRIPE_SECRET_KEY", ""), secret=True
+    )
+    stripe_publishable_key = _prompt(
+        "STRIPE_PUBLISHABLE_KEY", existing.get("STRIPE_PUBLISHABLE_KEY", "")
+    )
+    stripe_webhook_secret = _prompt(
+        "STRIPE_WEBHOOK_SECRET", existing.get("STRIPE_WEBHOOK_SECRET", ""), secret=True
+    )
+
     # ── App ────────────────────────────────────────────────────────────────────
     print("\n--- App ---")
     frontend_url = _prompt(
@@ -268,6 +282,13 @@ R2_SECRET_ACCESS_KEY={r2_secret_access_key}
 R2_BUCKET={r2_bucket}
 # Optional: custom public domain bound to the bucket (e.g. https://assets.xoxoedu.com)
 R2_PUBLIC_URL={r2_public_url}
+
+# Stripe
+# Get keys from dashboard.stripe.com/test/apikeys
+# Webhook secret: stripe listen --forward-to localhost:8000/api/v1/payments/webhook
+STRIPE_SECRET_KEY={stripe_secret_key}
+STRIPE_PUBLISHABLE_KEY={stripe_publishable_key}
+STRIPE_WEBHOOK_SECRET={stripe_webhook_secret}
 
 # App
 FRONTEND_URL={frontend_url}
