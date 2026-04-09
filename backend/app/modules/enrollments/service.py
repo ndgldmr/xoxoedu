@@ -91,7 +91,7 @@ async def _get_active_enrollment(
         select(Enrollment).where(
             Enrollment.user_id == user_id,
             Enrollment.course_id == course_id,
-            Enrollment.status == "active",
+            Enrollment.status.in_(["active", "completed"]),
         )
     )
     if not enrollment:

@@ -11,11 +11,18 @@ from app.db.models.user import User
 from app.db.session import get_db
 from app.modules.admin import service
 from app.modules.admin.schemas import (
+    AdminSubmissionOut,
+    AnnouncementIn,
+    AnnouncementOut,
+    CourseAnalyticsOut,
     CouponCreateIn,
     CouponOut,
     CouponUpdateIn,
+    GradeSubmissionIn,
+    PlatformAnalyticsOut,
     RefundOut,
     RoleUpdateIn,
+    StudentProgressRow,
 )
 from app.modules.assignments import service as assignment_service
 from app.modules.assignments.schemas import AssignmentIn
@@ -307,3 +314,106 @@ async def refund_payment(
     """Trigger a Stripe refund for a completed payment."""
     result = await service.refund_payment(db, payment_id)
     return ok(RefundOut.model_validate(result).model_dump())
+
+
+# ── Grading ─────────────────────────────────────────────────────────────────────
+
+@router.get("/courses/{course_id}/submissions")
+async def list_submissions(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    status: str | None = Query(None, description="ungraded | graded | flagged"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List the assignment submission queue for a course, oldest-first."""
+    submissions, total = await service.list_submissions(db, course_id, status, skip, limit)
+    return ok(
+        [AdminSubmissionOut.model_validate(s).model_dump() for s in submissions],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
+
+@router.patch("/submissions/{submission_id}/grade")
+async def grade_submission(
+    submission_id: uuid.UUID,
+    data: GradeSubmissionIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = require_role(Role.ADMIN),
+) -> dict:
+    """Save a grade (draft or published) on an assignment submission."""
+    result = await service.grade_submission(db, submission_id, current_user.id, data)
+    return ok(AdminSubmissionOut.model_validate(result).model_dump())
+
+
+@router.post("/submissions/{submission_id}/reopen")
+async def reopen_submission(
+    submission_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Allow a student to upload a new attempt for this submission."""
+    result = await service.reopen_submission(db, submission_id)
+    return ok(AdminSubmissionOut.model_validate(result).model_dump())
+
+
+# ── Analytics ─────────────────────────────────────────────────────────────────────
+
+@router.get("/courses/{course_id}/analytics")
+async def get_course_analytics(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Aggregated analytics for a course: enrollments, quiz scores, lesson drop-off."""
+    result = await service.get_course_analytics(db, course_id)
+    return ok(CourseAnalyticsOut.model_validate(result).model_dump())
+
+
+@router.get("/courses/{course_id}/students")
+async def get_course_students(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """Paginated progress table of all students enrolled in a course."""
+    rows, total = await service.get_course_students(db, course_id, skip, limit)
+    return ok(
+        [StudentProgressRow.model_validate(r).model_dump() for r in rows],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
+
+@router.get("/analytics/platform")
+async def get_platform_analytics(
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Platform-wide aggregated metrics: students, enrollments, revenue, top courses."""
+    result = await service.get_platform_analytics(db)
+    return ok(PlatformAnalyticsOut.model_validate(result).model_dump())
+
+
+# ── Announcements ─────────────────────────────────────────────────────────────────
+
+@router.post("/announcements", status_code=201)
+async def create_announcement(
+    data: AnnouncementIn,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = require_role(Role.ADMIN),
+) -> dict:
+    """Create an announcement and dispatch emails to targeted students."""
+    result = await service.create_announcement(db, current_user.id, data)
+    return ok(AnnouncementOut.model_validate(result).model_dump())
+
+
+@router.get("/announcements")
+async def list_announcements(
+    db: AsyncSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List all announcements, newest first."""
+    announcements, total = await service.list_announcements(db, skip, limit)
+    return ok(
+        [AnnouncementOut.model_validate(a).model_dump() for a in announcements],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )

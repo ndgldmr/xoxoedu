@@ -1,5 +1,6 @@
 """Re-exports all ORM model classes for convenient single-import access."""
 
+from app.db.models.announcement import Announcement
 from app.db.models.assignment import Assignment, AssignmentSubmission
 from app.db.models.certificate import Certificate, CertificateRequest
 from app.db.models.coupon import Coupon
@@ -34,4 +35,5 @@ __all__ = [
     "Coupon",
     "Certificate",
     "CertificateRequest",
+    "Announcement",
 ]

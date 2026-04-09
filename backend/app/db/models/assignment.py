@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -70,8 +70,15 @@ class AssignmentSubmission(Base, UUIDMixin, TimestampMixin):
         scan_status: Virus scan state — ``"pending"``, ``"clean"``, or ``"infected"``.
         upload_url_expires_at: Expiry of the presigned PUT URL; ``None`` after confirmation.
         submitted_at: Set when the student confirms the upload is complete.
+        attempt_number: 1-based counter; incremented when a student resubmits.
+        grade_score: Numeric score assigned by the admin (0–100); ``None`` until graded.
+        grade_feedback: Written feedback from the grading admin.
+        grade_published_at: ``None`` while draft; set to now() when grade is published.
+        graded_by: FK to the admin who graded; ``None`` until graded.
+        is_reopened: When ``True`` the student may upload a new attempt.
         user: The submitting ``User``.
         assignment: The ``Assignment`` being responded to.
+        grader: The admin ``User`` who graded this submission.
     """
 
     __tablename__ = "assignment_submissions"
@@ -95,8 +102,19 @@ class AssignmentSubmission(Base, UUIDMixin, TimestampMixin):
     submitted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    grade_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    grade_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
+    grade_published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    graded_by: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    is_reopened: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     user: Mapped[User] = relationship("User", foreign_keys=[user_id])
     assignment: Mapped[Assignment] = relationship(
         "Assignment", foreign_keys=[assignment_id]
     )
+    grader: Mapped[Optional[User]] = relationship("User", foreign_keys=[graded_by])

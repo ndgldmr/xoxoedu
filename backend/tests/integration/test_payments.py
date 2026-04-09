@@ -93,25 +93,20 @@ async def test_webhook_checkout_completed_creates_enrollment(
         },
     }).encode()
 
-    with (
-        patch("stripe.WebhookEvent.construct_from") as mock_construct,
-        patch("stripe.WebhookEvent.parse_raw", return_value={}),
-    ):
-        mock_event = {
-            "type": "checkout.session.completed",
-            "data": {
-                "object": {
-                    "id": session_id,
-                    "metadata": {
-                        "payment_id": str(payment.id),
-                        "user_id": str(student.id),
-                        "course_id": str(course.id),
-                    },
-                }
-            },
-        }
-        mock_construct.return_value = mock_event
-
+    mock_event = {
+        "type": "checkout.session.completed",
+        "data": {
+            "object": {
+                "id": session_id,
+                "metadata": {
+                    "payment_id": str(payment.id),
+                    "user_id": str(student.id),
+                    "course_id": str(course.id),
+                },
+            }
+        },
+    }
+    with patch("stripe.Webhook.construct_event", return_value=mock_event):
         resp = await client.post(
             "/api/v1/payments/webhook",
             content=payload,
@@ -140,13 +135,12 @@ async def test_webhook_invalid_signature_returns_400(
     """A bad Stripe signature is rejected with 400."""
     import stripe
 
-    with patch("stripe.WebhookEvent.construct_from", side_effect=stripe.error.SignatureVerificationError("bad sig", "hdr")):
-        with patch("stripe.WebhookEvent.parse_raw", return_value={}):
-            resp = await client.post(
-                "/api/v1/payments/webhook",
-                content=b"{}",
-                headers={"stripe-signature": "bad"},
-            )
+    with patch("stripe.Webhook.construct_event", side_effect=stripe.error.SignatureVerificationError("bad sig", "hdr")):
+        resp = await client.post(
+            "/api/v1/payments/webhook",
+            content=b"{}",
+            headers={"stripe-signature": "bad"},
+        )
 
     assert resp.status_code == 400
 
@@ -180,14 +174,10 @@ async def test_webhook_refund_updates_enrollment_status(
     await db.refresh(payment)
 
     payload = b"{}"
-    with (
-        patch("stripe.WebhookEvent.construct_from") as mock_construct,
-        patch("stripe.WebhookEvent.parse_raw", return_value={}),
-    ):
-        mock_construct.return_value = {
-            "type": "charge.refunded",
-            "data": {"object": {"payment_intent": payment_intent_id}},
-        }
+    with patch("stripe.Webhook.construct_event", return_value={
+        "type": "charge.refunded",
+        "data": {"object": {"payment_intent": payment_intent_id}},
+    }):
         resp = await client.post(
             "/api/v1/payments/webhook",
             content=payload,

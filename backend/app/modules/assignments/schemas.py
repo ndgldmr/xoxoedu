@@ -96,6 +96,11 @@ class SubmissionOut(BaseModel):
         mime_type: Declared MIME type.
         scan_status: Virus scan state (``"pending"``, ``"clean"``, or ``"infected"``).
         submitted_at: Set when the student confirms the upload is complete.
+        attempt_number: 1-based counter across all uploads by this student.
+        grade_score: Numeric score (0–100); ``None`` until the grade is published.
+        grade_feedback: Written feedback; ``None`` until the grade is published.
+        grade_published_at: ``None`` until the admin publishes the grade.
+        is_reopened: ``True`` if the admin has allowed a new attempt.
         created_at: Row creation timestamp.
     """
 
@@ -107,6 +112,11 @@ class SubmissionOut(BaseModel):
     mime_type: str
     scan_status: str
     submitted_at: datetime | None
+    attempt_number: int
+    grade_score: float | None
+    grade_feedback: str | None
+    grade_published_at: datetime | None
+    is_reopened: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}

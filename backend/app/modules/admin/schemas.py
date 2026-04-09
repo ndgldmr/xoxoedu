@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.rbac import Role
 
@@ -89,3 +89,156 @@ class RefundOut(BaseModel):
     payment_id: uuid.UUID
     status: str
     stripe_refund_id: str
+
+
+# ── Grading ────────────────────────────────────────────────────────────────────
+
+class GradeSubmissionIn(BaseModel):
+    """Payload for ``PATCH /admin/submissions/{id}/grade``.
+
+    Attributes:
+        grade_score: Numeric score in the range 0–100.
+        grade_feedback: Written feedback for the student.
+        publish: When ``True`` the grade is published immediately and the student
+            is notified.  ``False`` saves a draft visible only to admins.
+    """
+
+    grade_score: float = Field(ge=0.0, le=100.0)
+    grade_feedback: str = Field(min_length=1)
+    publish: bool = False
+
+
+class AdminSubmissionOut(BaseModel):
+    """Full submission representation for the admin grading queue.
+
+    Attributes:
+        id: Submission UUID.
+        assignment_id: The assignment this submission belongs to.
+        user_id: The student who submitted.
+        user_email: Student's email address (populated by service).
+        file_name: Original filename.
+        file_size: Declared file size in bytes.
+        mime_type: Declared MIME type.
+        scan_status: Virus scan state.
+        attempt_number: 1-based attempt counter.
+        submitted_at: Set when the student confirmed the upload.
+        grade_score: Numeric score; ``None`` until graded.
+        grade_feedback: Written feedback; ``None`` until graded.
+        grade_published_at: ``None`` while draft; timestamp when published.
+        graded_by: UUID of the grading admin; ``None`` until graded.
+        is_reopened: ``True`` if the admin allowed a resubmission.
+        created_at: Row creation timestamp.
+    """
+
+    id: uuid.UUID
+    assignment_id: uuid.UUID
+    user_id: uuid.UUID
+    user_email: str | None = None
+    file_name: str
+    file_size: int
+    mime_type: str
+    scan_status: str
+    attempt_number: int
+    submitted_at: datetime | None
+    grade_score: float | None
+    grade_feedback: str | None
+    grade_published_at: datetime | None
+    graded_by: uuid.UUID | None
+    is_reopened: bool
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ── Analytics ──────────────────────────────────────────────────────────────────
+
+class LessonDropOffItem(BaseModel):
+    """Completion stats for a single lesson, used in the course analytics response."""
+
+    lesson_id: uuid.UUID
+    lesson_title: str
+    chapter_title: str
+    completion_count: int
+    completion_rate: float
+
+
+class CourseAnalyticsOut(BaseModel):
+    """Aggregated analytics for a single course."""
+
+    course_id: uuid.UUID
+    total_enrollments: int
+    active_enrollments: int
+    completed_enrollments: int
+    completion_rate: float
+    average_quiz_score: float | None
+    lesson_drop_off: list[LessonDropOffItem]
+
+
+class StudentProgressRow(BaseModel):
+    """One row in the per-course student progress table."""
+
+    user_id: uuid.UUID
+    user_email: str
+    display_name: str | None
+    enrolled_at: datetime
+    status: str
+    completion_pct: float
+    last_active_at: datetime | None
+
+
+class TopCourseItem(BaseModel):
+    """Summary of a course used in the platform analytics response."""
+
+    course_id: uuid.UUID
+    title: str
+    enrollment_count: int
+
+
+class PlatformAnalyticsOut(BaseModel):
+    """Platform-wide aggregated metrics for the admin dashboard."""
+
+    total_students: int
+    active_students_30d: int
+    total_enrollments: int
+    total_revenue_cents: int
+    top_courses: list[TopCourseItem]
+
+
+# ── Announcements ──────────────────────────────────────────────────────────────
+
+class AnnouncementIn(BaseModel):
+    """Payload for ``POST /admin/announcements``.
+
+    Attributes:
+        title: Short subject line (≤ 255 chars).
+        body: Full announcement text.
+        scope: ``"course"`` to target one course; ``"platform"`` for all students.
+        course_id: Required when ``scope="course"``; ignored for platform scope.
+    """
+
+    title: str = Field(min_length=1, max_length=255)
+    body: str = Field(min_length=1)
+    scope: str
+    course_id: uuid.UUID | None = None
+
+    @field_validator("scope")
+    @classmethod
+    def validate_scope(cls, v: str) -> str:
+        if v not in {"course", "platform"}:
+            raise ValueError("scope must be 'course' or 'platform'")
+        return v
+
+
+class AnnouncementOut(BaseModel):
+    """Response schema for an announcement."""
+
+    id: uuid.UUID
+    title: str
+    body: str
+    scope: str
+    course_id: uuid.UUID | None
+    created_by: uuid.UUID | None
+    created_at: datetime
+    sent_at: datetime | None
+
+    model_config = {"from_attributes": True}

@@ -119,8 +119,9 @@ async def handle_webhook(
         InvalidWebhookSignature: If the signature check fails.
     """
     try:
-        event = stripe.WebhookEvent.construct_from(
-            stripe.WebhookEvent.parse_raw(payload),  # type: ignore[arg-type]
+        event = stripe.Webhook.construct_event(
+            payload,
+            sig_header,
             settings.STRIPE_WEBHOOK_SECRET,
         )
     except stripe.error.SignatureVerificationError as exc:

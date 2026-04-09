@@ -363,6 +363,30 @@ class RefundFailed(AppException):
     message = "Refund could not be processed"
 
 
+class AnnouncementNotFound(AppException):
+    """Raised when an announcement cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "ANNOUNCEMENT_NOT_FOUND"
+    message = "Announcement not found"
+
+
+class SubmissionNotGradeable(AppException):
+    """Raised when an admin tries to grade a submission that has not been confirmed yet."""
+
+    status_code = 422
+    error_code = "SUBMISSION_NOT_GRADEABLE"
+    message = "This submission has not been confirmed by the student yet"
+
+
+class SubmissionAlreadyGraded(AppException):
+    """Raised when an admin tries to publish a grade that has already been published."""
+
+    status_code = 409
+    error_code = "SUBMISSION_ALREADY_GRADED"
+    message = "A grade has already been published for this submission"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 

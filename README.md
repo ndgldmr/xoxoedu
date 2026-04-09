@@ -1167,33 +1167,33 @@ Student          Backend                      Celery Worker
 
 **Backend:**
 
-- [ ] `GET /api/v1/admin/courses/{id}/submissions` — paginated submission queue with filters
+- [x] `GET /api/v1/admin/courses/{id}/submissions` — paginated submission queue with filters
 
-- [ ] `PATCH /api/v1/admin/submissions/{id}/grade` — save grade + feedback (draft/published)
+- [x] `PATCH /api/v1/admin/submissions/{id}/grade` — save grade + feedback (draft/published)
 
-- [ ] `POST /api/v1/admin/submissions/{id}/reopen` — allow student resubmission
+- [x] `POST /api/v1/admin/submissions/{id}/reopen` — allow student resubmission
 
-- [ ] `GET /api/v1/admin/courses/{id}/analytics` — completion rate, average quiz score, lesson drop-off
+- [x] `GET /api/v1/admin/courses/{id}/analytics` — completion rate, average quiz score, lesson drop-off
 
-- [ ] `GET /api/v1/admin/analytics/platform` — platform-wide metrics (admin only)
+- [x] `GET /api/v1/admin/analytics/platform` — platform-wide metrics (admin only)
 
-- [ ] `GET /api/v1/admin/courses/{id}/students` — student progress table
+- [x] `GET /api/v1/admin/courses/{id}/students` — student progress table
 
-- [ ] Analytics: read replica or materialized view for aggregation queries
+- [x] Analytics: direct SQLAlchemy async aggregate queries (`func.count`, `func.avg`) — no materialized view at current scale
 
-- [ ] `POST /api/v1/admin/announcements` — send announcement (email via Celery)
+- [x] `POST /api/v1/admin/announcements` — send announcement (email via Celery)
 
-- [ ] `GET /api/v1/admin/announcements` — list announcements
+- [x] `GET /api/v1/admin/announcements` — list announcements
 
 **Testing (Sprint 6):**
 
-- [ ] Unit tests: grade calculation, submission queue ordering
+- [x] Unit tests: grade calculation, submission queue ordering
 
-- [ ] Integration tests: grade submission → grade_published_at set → notification enqueued
+- [x] Integration tests: grade submission → grade_published_at set → notification enqueued
 
-- [ ] Integration tests: analytics aggregations correct with known fixture data
+- [x] Integration tests: analytics aggregations correct with known fixture data
 
-- [ ] Integration tests: announcement sends email to all enrolled students (mocked email)
+- [x] Integration tests: announcement sends email to all enrolled students (mocked email)
 
 ---
 
@@ -1563,9 +1563,9 @@ Student          Backend                      Celery Worker
 
 ---
 
-### Current state (through Sprint 5)
+### Current state (through Sprint 6)
 
-**What's built:** The backend runs the full Sprint 1–5 API surface.
+**What's built:** The backend runs the full Sprint 1–6 API surface.
 
 | Sprint | Feature area | Status |
 | --- | --- | --- |
@@ -1574,6 +1574,7 @@ Student          Backend                      Celery Worker
 | S3 | Enrollment & progress — enroll/unenroll, lesson progress, course progress, continue-where-left-off, notes, bookmarks | ✅ Complete |
 | S4 | Quizzes & assignments — auto-scored multi-attempt quizzes; presigned R2 file-upload assignments | ✅ Complete |
 | S5 | Payments & certificates — Stripe Checkout, coupon validation, webhook-triggered enrollment, WeasyPrint PDF certificates, public verification; admin coupon CRUD, payment history, refund processing | ✅ Complete |
+| S6 | Admin grading & analytics — submission grading queue (draft/publish), student resubmission, course + platform analytics, per-student progress table, announcement broadcasts via Celery email | ✅ Complete |
 
 ---
 
@@ -1655,6 +1656,7 @@ This applies all migrations (only needed once, or after pulling new schema chang
 | `0003_enrollment_progress` | `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks` |
 | `0004_quizzes_assignments` | `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions` |
 | `0005_payments_certificates` | `payments`, `coupons`, `certificates`, `certificate_requests` |
+| `0006_grading_announcements` | grading columns on `assignment_submissions` (`grade_score`, `grade_feedback`, `grade_published_at`, `graded_by`, `is_reopened`, `attempt_number`); `announcements` |
 
 ```bash
 # In Docker:

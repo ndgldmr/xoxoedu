@@ -3,7 +3,7 @@
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -140,6 +140,15 @@ async def request_upload(
             f"{assignment.max_file_size_bytes} bytes."
         )
 
+    # Determine the next attempt number for this student × assignment pair
+    prior_count = await db.scalar(
+        select(func.count(AssignmentSubmission.id)).where(
+            AssignmentSubmission.user_id == user_id,
+            AssignmentSubmission.assignment_id == assignment_id,
+        )
+    ) or 0
+    attempt_number = prior_count + 1
+
     key = f"assignments/{assignment_id}/{uuid.uuid4()}/{file_name}"
     expires_at = datetime.now(UTC) + timedelta(seconds=_PRESIGNED_TTL_SECONDS)
 
@@ -157,6 +166,7 @@ async def request_upload(
         mime_type=mime_type,
         scan_status="pending",
         upload_url_expires_at=expires_at,
+        attempt_number=attempt_number,
     )
     db.add(submission)
     await db.commit()
