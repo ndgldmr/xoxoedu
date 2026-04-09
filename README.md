@@ -1036,39 +1036,112 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 **Backend:**
 
-- [ ] Migrations: `payments`, `coupons`, `certificates`, `certificate_requests`
+- [x] Migrations: `payments`, `coupons`, `certificates`, `certificate_requests`
 
-- [ ] Stripe integration: `POST /api/v1/payments/checkout` — create Stripe Checkout session
+- [x] Stripe integration: `POST /api/v1/payments/checkout` — create Stripe Checkout session
 
-- [ ] `POST /api/v1/payments/webhook` — handle Stripe webhooks (payment success → enrollment)
+- [x] `POST /api/v1/payments/webhook` — handle Stripe webhooks (`checkout.session.completed` → enrollment, `charge.refunded` → enrollment status update)
 
-- [ ] `POST /api/v1/coupons/validate` — validate coupon code, return discount
+- [x] `POST /api/v1/coupons/validate` — validate coupon code; returns discount type, amount, and final price
 
-- [ ] `GET /api/v1/users/me/payments` — payment history
+- [x] `GET /api/v1/users/me/payments` — payment history for authenticated student
 
-- [ ] Certificate eligibility check (post progress-save hook)
+- [x] Certificate eligibility check hooked into `_maybe_complete_enrollment` (fires after every lesson completion)
 
-- [ ] `POST /api/v1/certificates/generate` — trigger certificate PDF generation (Celery task)
+- [x] `POST /api/v1/certificates/generate` — manually trigger certificate issuance for a completed course
 
-- [ ] Certificate PDF generation: WeasyPrint or Puppeteer; stored in S3
+- [x] Certificate PDF generation via WeasyPrint; uploaded to R2 as `certificates/<id>.pdf` (Celery task)
 
-- [ ] `GET /api/v1/certificates` — list student's certificates
+- [x] `GET /api/v1/certificates` — list student's certificates
 
-- [ ] `GET /api/v1/verify/{token}` — public certificate verification (no auth)
+- [x] `GET /api/v1/verify/{token}` — public certificate verification (no auth required)
 
-- [ ] `POST /api/v1/certificate-requests` — manual review flow
+- [x] `POST /api/v1/certificate-requests` — manual review request flow
+
+- [x] `stripe` and `weasyprint` added to `pyproject.toml`; `STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `STRIPE_WEBHOOK_SECRET` added to `config.py` and `.env.example`
+
+**Flows:**
+
+```
+Stripe payment flow
+───────────────────
+Student          Backend                    Stripe
+  │                │                          │
+  │─ POST /payments/checkout ──────────────►  │
+  │                │  creates Payment(pending) │
+  │                │─ checkout.Session.create ►│
+  │                │◄── { url, session_id } ───│
+  │◄── checkout_url ──│                        │
+  │                   │                        │
+  │─────── redirect to Stripe hosted page ────►│
+  │◄──────────── student pays ────────────────►│
+  │                   │◄─ webhook: checkout    │
+  │                   │   .session.completed ──│
+  │                   │  Payment → completed   │
+  │                   │  Enrollment created    │
+  │◄── redirect to /courses/{slug}?payment=success
+
+Coupon validation flow
+──────────────────────
+Student      Backend (POST /coupons/validate)
+  │                │
+  │─ { code, course_id, original_amount_cents } ──►│
+  │                │  1. Lookup coupon by code
+  │                │  2. Check expires_at
+  │                │  3. Check uses_count < max_uses
+  │                │  4. Check applies_to (if scoped)
+  │                │  5. Calculate discount
+  │◄─ { discount_type, discount_amount_cents,      │
+  │     final_amount_cents }                        │
+  │
+  │  (student passes final_amount_cents to checkout)
+
+Certificate issuance flow
+──────────────────────────
+Student          Backend                      Celery Worker
+  │                │                               │
+  │─ POST /progress (status=completed) ──────────► │
+  │                │  _maybe_complete_enrollment()
+  │                │  → all lessons done?
+  │                │    enrollment.status = completed
+  │                │  → check_and_issue()
+  │                │    Certificate row created
+  │                │    (verification_token generated)
+  │                │─── generate_certificate_pdf.delay() ──►│
+  │◄── 200 OK ─────│                               │
+  │                │                    Load cert + user + course
+  │                │                    Render HTML template
+  │                │                    WeasyPrint → PDF bytes
+  │                │                    Upload to R2
+  │                │                    certificate.pdf_url set
+  │
+  │  (student can now GET /certificates or
+  │   share /verify/{token} publicly)
+```
 
 **Testing (Sprint 5):**
 
-- [ ] Unit tests: coupon discount calculation (percentage, fixed), expiry check, usage cap
+- [x] Unit tests: coupon discount calculation (percentage, fixed), cap at original price, zero discount — 7 tests
 
-- [ ] Integration tests: Stripe webhook → enrollment created → student can access course
+- [x] Unit tests: coupon validation edge cases — expired, usage exceeded, not applicable, global coupon — 4 tests
 
-- [ ] Integration tests: certificate eligibility: all lessons complete + passing quiz = certificate issued
+- [x] Integration tests: `checkout.session.completed` webhook → `Payment.status=completed`, `Enrollment` created
 
-- [ ] Integration tests: public verification URL returns correct data; invalid token returns 404
+- [x] Integration tests: `charge.refunded` webhook → `Payment.status=refunded`, `Enrollment.status=refunded`
 
-- [ ] Integration tests: refund webhook → enrollment status updated
+- [x] Integration tests: invalid webhook signature → 400
+
+- [x] Integration tests: `GET /users/me/payments` returns payment history
+
+- [x] Integration tests: `POST /certificates/generate` issues certificate for completed enrollment
+
+- [x] Integration tests: `POST /certificates/generate` returns 422 for incomplete enrollment
+
+- [x] Integration tests: `GET /certificates` lists earned certificates
+
+- [x] Integration tests: `GET /verify/{token}` returns correct certificate data; invalid token → 404
+
+- [x] Integration tests: `POST /certificate-requests` creates pending request
 
 ---
 
@@ -1474,9 +1547,9 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ---
 
-### Current state (through Sprint 4)
+### Current state (through Sprint 5)
 
-**What's built:** The backend runs the full Sprint 1–4 API surface.
+**What's built:** The backend runs the full Sprint 1–5 API surface.
 
 | Sprint | Feature area | Status |
 | --- | --- | --- |
@@ -1484,6 +1557,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 | S2 | Course structure — categories, courses, chapters, lessons, resources; full-text search; admin authoring | ✅ Complete |
 | S3 | Enrollment & progress — enroll/unenroll, lesson progress, course progress, continue-where-left-off, notes, bookmarks | ✅ Complete |
 | S4 | Quizzes & assignments — auto-scored multi-attempt quizzes; presigned R2 file-upload assignments | ✅ Complete |
+| S5 | Payments & certificates — Stripe Checkout, coupon validation, webhook-triggered enrollment, WeasyPrint PDF certificates, public verification | ✅ Complete |
 
 ---
 
@@ -1514,8 +1588,16 @@ This generates RSA keys and a secret key automatically, then prompts for credent
 | `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | [console.cloud.google.com](https://console.cloud.google.com) → APIs & Services → Credentials |
 | `RESEND_API_KEY` | [resend.com/api-keys](https://resend.com/api-keys) |
 | `R2_ACCOUNT_ID` / `R2_ACCESS_KEY_ID` / `R2_SECRET_ACCESS_KEY` | Cloudflare dashboard → R2 → Manage R2 API Tokens (production only — not needed for local dev) |
+| `STRIPE_SECRET_KEY` / `STRIPE_PUBLISHABLE_KEY` | [dashboard.stripe.com/test/apikeys](https://dashboard.stripe.com/test/apikeys) — use test keys for development |
+| `STRIPE_WEBHOOK_SECRET` | Run `stripe listen --forward-to localhost:8000/api/v1/payments/webhook`; the CLI prints the `whsec_...` secret |
 
 > **Local dev:** `docker compose up` starts MinIO automatically and wires all storage env vars for you — no R2 credentials needed. The MinIO console is available at `http://localhost:9001` (credentials: `minioadmin` / `minioadmin`).
+>
+> **Stripe webhooks (local dev):** Stripe cannot reach `localhost` directly. Install the [Stripe CLI](https://stripe.com/docs/stripe-cli) (`brew install stripe/stripe-cli/stripe`), then in a separate terminal run:
+> ```bash
+> stripe listen --forward-to localhost:8000/api/v1/payments/webhook
+> ```
+> Copy the printed `whsec_...` value into `STRIPE_WEBHOOK_SECRET` in your `.env`.
 >
 > **Production:** Leave `R2_ENDPOINT_URL` blank; the endpoint is derived from `R2_ACCOUNT_ID`. File-upload endpoints return `500 UPLOAD_FAILED` if R2 is not configured.
 
@@ -1548,7 +1630,7 @@ uv run celery -A app.worker.celery_app worker --loglevel=info  # terminal 2
 
 #### 4. Run database migrations
 
-This applies all four migrations (only needed once, or after pulling new schema changes):
+This applies all migrations (only needed once, or after pulling new schema changes):
 
 | Migration | Tables created |
 | --- | --- |
@@ -1556,6 +1638,7 @@ This applies all four migrations (only needed once, or after pulling new schema 
 | `0002_course_structure` | `categories`, `courses`, `chapters`, `lessons`, `lesson_resources` |
 | `0003_enrollment_progress` | `enrollments`, `lesson_progress`, `user_notes`, `user_bookmarks` |
 | `0004_quizzes_assignments` | `quizzes`, `quiz_questions`, `quiz_submissions`, `assignments`, `assignment_submissions` |
+| `0005_payments_certificates` | `payments`, `coupons`, `certificates`, `certificate_requests` |
 
 ```bash
 # In Docker:
