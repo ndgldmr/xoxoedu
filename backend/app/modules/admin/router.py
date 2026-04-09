@@ -10,7 +10,13 @@ from app.core.responses import ok
 from app.db.models.user import User
 from app.db.session import get_db
 from app.modules.admin import service
-from app.modules.admin.schemas import RoleUpdateIn
+from app.modules.admin.schemas import (
+    CouponCreateIn,
+    CouponOut,
+    CouponUpdateIn,
+    RefundOut,
+    RoleUpdateIn,
+)
 from app.modules.assignments import service as assignment_service
 from app.modules.assignments.schemas import AssignmentIn
 from app.modules.auth.schemas import UserOut
@@ -227,3 +233,77 @@ async def create_assignment(
     """Create an assignment on a lesson."""
     assignment = await assignment_service.create_assignment(db, data)
     return ok(assignment.model_dump())
+
+
+# ── Coupons ─────────────────────────────────────────────────────────────────────
+
+@router.post("/coupons", status_code=201)
+async def create_coupon(
+    data: CouponCreateIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a discount coupon."""
+    coupon = await service.create_coupon(db, data)
+    return ok(CouponOut.model_validate(coupon).model_dump())
+
+
+@router.get("/coupons")
+async def list_coupons(
+    db: AsyncSession = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List all coupons with usage stats."""
+    coupons, total = await service.list_coupons(db, skip, limit)
+    return ok(
+        [CouponOut.model_validate(c).model_dump() for c in coupons],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
+
+@router.patch("/coupons/{coupon_id}")
+async def update_coupon(
+    coupon_id: uuid.UUID,
+    data: CouponUpdateIn,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Update a coupon's expiry date and/or usage cap."""
+    coupon = await service.update_coupon(db, coupon_id, data)
+    return ok(CouponOut.model_validate(coupon).model_dump())
+
+
+@router.delete("/coupons/{coupon_id}", status_code=204)
+async def delete_coupon(
+    coupon_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a coupon."""
+    await service.delete_coupon(db, coupon_id)
+
+
+# ── Payments ─────────────────────────────────────────────────────────────────────
+
+@router.get("/payments")
+async def list_payments(
+    db: AsyncSession = Depends(get_db),
+    course_id: uuid.UUID | None = Query(None),
+    status: str | None = Query(None),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List all payments across the platform, with optional course and status filters."""
+    payments, total = await service.list_payments_admin(db, course_id, status, skip, limit)
+    return ok(
+        [p.model_dump() for p in payments],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
+
+@router.post("/payments/{payment_id}/refund")
+async def refund_payment(
+    payment_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Trigger a Stripe refund for a completed payment."""
+    result = await service.refund_payment(db, payment_id)
+    return ok(RefundOut.model_validate(result).model_dump())

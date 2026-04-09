@@ -347,6 +347,22 @@ class NotEligibleForCertificate(AppException):
     message = "You have not completed all requirements to receive a certificate"
 
 
+class CouponAlreadyExists(AppException):
+    """Raised when a coupon creation request uses a code that already exists."""
+
+    status_code = 409
+    error_code = "COUPON_ALREADY_EXISTS"
+    message = "A coupon with this code already exists"
+
+
+class RefundFailed(AppException):
+    """Raised when a Stripe refund cannot be processed."""
+
+    status_code = 500
+    error_code = "REFUND_FAILED"
+    message = "Refund could not be processed"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 

@@ -1062,17 +1062,17 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 **Admin (A9 — Billing & Payments):**
 
-- [ ] `POST /api/v1/admin/coupons` — create coupon (percentage or fixed, per-course or global, expiry, usage cap)
+- [x] `POST /api/v1/admin/coupons` — create coupon (percentage or fixed, per-course or global, expiry, usage cap)
 
-- [ ] `GET /api/v1/admin/coupons` — list all coupons with usage stats
+- [x] `GET /api/v1/admin/coupons` — list all coupons with usage stats
 
-- [ ] `PATCH /api/v1/admin/coupons/{id}` — update coupon (expiry, max_uses)
+- [x] `PATCH /api/v1/admin/coupons/{id}` — update coupon (expiry, max_uses)
 
-- [ ] `DELETE /api/v1/admin/coupons/{id}` — delete coupon
+- [x] `DELETE /api/v1/admin/coupons/{id}` — delete coupon
 
-- [ ] `GET /api/v1/admin/payments` — paginated payment history across all students, filterable by course and status
+- [x] `GET /api/v1/admin/payments` — paginated payment history across all students, filterable by course and status
 
-- [ ] `POST /api/v1/admin/payments/{id}/refund` — trigger Stripe refund; webhook handles downstream enrollment status update
+- [x] `POST /api/v1/admin/payments/{id}/refund` — trigger Stripe refund; updates payment and enrollment status to refunded
 
 > **Deferred:** A9.5 (revenue reporting) moves to S6 alongside other analytics endpoints. A9.6 (currency config) is a platform settings concern for a later sprint.
 
@@ -1573,7 +1573,7 @@ Student          Backend                      Celery Worker
 | S2 | Course structure — categories, courses, chapters, lessons, resources; full-text search; admin authoring | ✅ Complete |
 | S3 | Enrollment & progress — enroll/unenroll, lesson progress, course progress, continue-where-left-off, notes, bookmarks | ✅ Complete |
 | S4 | Quizzes & assignments — auto-scored multi-attempt quizzes; presigned R2 file-upload assignments | ✅ Complete |
-| S5 | Payments & certificates — Stripe Checkout, coupon validation, webhook-triggered enrollment, WeasyPrint PDF certificates, public verification; admin coupon CRUD, payment history, refund processing | 🔄 In progress |
+| S5 | Payments & certificates — Stripe Checkout, coupon validation, webhook-triggered enrollment, WeasyPrint PDF certificates, public verification; admin coupon CRUD, payment history, refund processing | ✅ Complete |
 
 ---
 
