@@ -667,6 +667,36 @@ async def delete_note(
     await db.commit()
 
 
+async def list_notes(
+    db: AsyncSession, user_id: uuid.UUID, skip: int, limit: int
+) -> tuple[list[UserNote], int]:
+    """Return a paginated list of the student's notes with full lesson context.
+
+    Args:
+        db: Async database session.
+        user_id: UUID of the student.
+        skip: Number of rows to skip (offset).
+        limit: Maximum number of rows to return.
+
+    Returns:
+        A tuple of ``(notes, total)`` where ``total`` is the unfiltered count
+        of this student's notes.
+    """
+    base = select(UserNote).where(UserNote.user_id == user_id)
+    total = await db.scalar(select(func.count()).select_from(base.subquery()))
+    result = await db.scalars(
+        base.options(
+            selectinload(UserNote.lesson)
+            .selectinload(Lesson.chapter)
+            .selectinload(Chapter.course)
+        )
+        .order_by(UserNote.updated_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.all()), total or 0
+
+
 # ── Bookmarks ──────────────────────────────────────────────────────────────────
 
 async def toggle_bookmark(

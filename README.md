@@ -23,7 +23,7 @@
 
 ## 1. Project Overview
 
-XOXO Education is a proprietary, AI-native Learning Management System (LMS) built to serve students via web and mobile apps. It is designed as a clean, API-first backend that decouples course delivery from the client layer, enabling a single backend to power a Next.js web application and a React Native mobile app simultaneously.
+XOXO Education is a proprietary, AI-native Learning Management System (LMS) built to serve students via web and mobile apps. It is designed as a clean, API-first backend that decouples course delivery from the client layer, enabling a single backend to power a React + Vite web application and a React Native mobile app simultaneously.
 
 The system is being developed from scratch rather than forking an existing solution (e.g., Frappe LMS) in order to:
 
@@ -46,7 +46,7 @@ The system is being developed from scratch rather than forking an existing solut
 ```
 ┌───────────────────────────────────────────────────────────────────┐
 │                            CLIENTS                                 │
-│    Web App (Next.js 14)              Mobile App (React Native)     │
+│    Web App (React + Vite)            Mobile App (React Native)     │
 └──────────────────┬────────────────────────────┬───────────────────┘
                    │  HTTPS / REST + WebSocket   │
           ┌────────▼────────────────────────────▼────────┐
@@ -109,9 +109,9 @@ The system is being developed from scratch rather than forking an existing solut
 
 | Component | Technology | Notes |
 | --- | --- | --- |
-| LLM | Anthropic Claude (`claude-sonnet-4-6`) | Quiz/assignment feedback; AI grading |
-| Transcription | OpenAI Whisper API | Auto-captions from video audio |
-| Embeddings | OpenAI `text-embedding-3-small` | Lesson content chunks for RAG |
+| LLM | LiteLLM → Google AI `gemini/gemini-2.0-flash` | Quiz/assignment feedback; AI grading; RAG assistant. LiteLLM provides a unified interface — model swappable via env var without rewriting call sites. OpenRouter considered but rejected (requests route through third-party proxy; privacy + latency trade-off). |
+| Transcription | OpenAI Whisper API | Auto-captions from video audio; reused for pronunciation scoring |
+| Embeddings | Google `text-embedding-004` via LiteLLM | Lesson content chunks for RAG; same provider as LLM to avoid a second vendor key. OpenAI `text-embedding-3-small` remains a drop-in swap. |
 | RAG Pipeline | Custom Python (direct API calls) | No heavy framework dependency; auditable |
 | Prompt Management | Jinja2 templates (version-controlled) | Per-course system prompt overrides |
 
@@ -138,10 +138,11 @@ The system is being developed from scratch rather than forking an existing solut
 
 | Component | Technology | Notes |
 | --- | --- | --- |
-| Framework | Next.js 14 (App Router) | SSR for course pages (SEO); CSR for app |
-| Styling | Tailwind CSS |  |
+| Framework | React 18 + Vite | SPA; client-side only; fast HMR dev experience; no SSR complexity |
+| Routing | React Router v6 | Client-side routing; nested routes; protected route wrapper pattern |
+| Styling | Tailwind CSS v4 + shadcn/ui | CSS-first config; shadcn CLI for component scaffolding |
 | State | Zustand + React Query (TanStack Query) | Server state via React Query; UI state via Zustand |
-| Video | Video.js or react-player | HLS playback; caption rendering |
+| Video | Video.js | HLS playback; caption rendering; custom controls; transcript sync |
 | Testing | Vitest + React Testing Library + Playwright | Unit, component, E2E |
 
 ### Mobile Client
@@ -174,7 +175,7 @@ The system is being developed from scratch rather than forking an existing solut
 
 | Component | Technology | Notes |
 | --- | --- | --- |
-| Web hosting | Vercel | Native Next.js 14 App Router support; SSR, ISR, edge middleware; preview deploys per PR |
+| Web hosting | Vercel | Static SPA hosting; zero-config Vite + React build; preview deploy per PR; global CDN |
 | Web DNS & proxy | Cloudflare (free plan) | Nameservers migrated from Namecheap; proxies `api.xoxoeducation.com` (DDoS + WAF); SSL Full (strict) for Vercel |
 | Domain | xoxoeducation.com | Registered on Namecheap; DNS managed in Cloudflare |
 | Mobile builds | Expo EAS Build | Cloud builds for iOS (`.ipa`) and Android (`.aab`) without local Xcode / Android Studio |
@@ -413,7 +414,7 @@ The system is being developed from scratch rather than forking an existing solut
 | Metric | Target | Notes |
 | --- | --- | --- |
 | API response time | p95 &lt; 500ms, p99 &lt; 1s | Under normal load |
-| Page load (web) | LCP &lt; 2s on 4G | Next.js SSR for public pages |
+| Page load (web) | LCP &lt; 2s on 4G | Vite build + Vercel CDN; code-split by route |
 | Video start time | &lt; 3s on broadband | HLS ABR; preload metadata |
 | Database queries | &lt; 100ms for hot paths | Indexed on all FK and filter columns |
 | Search results | &lt; 300ms | PostgreSQL FTS with `pg_trgm` |
@@ -720,7 +721,7 @@ audit_logs          (id, actor_id FK, action, resource_type, resource_id, payloa
 
 ---
 
-### 9.2 Web Client (Next.js)
+### 9.2 Web Client (React + Vite)
 
 #### Unit Tests
 
@@ -1199,83 +1200,163 @@ Student          Backend                      Celery Worker
 
 ### Phase 3 — AI Layer (Sprints 7–9)
 
-#### Sprint 7 — AI Quiz & Assignment Feedback
+#### Sprint 7A — LLM Infrastructure Foundation ✅
 
-**Goal:** Short-answer quiz questions and assignment submissions receive Claude-generated feedback.
+**Goal:** Shared AI infrastructure that all subsequent AI sprints build on — LLM client, prompt system, usage tracking, quota enforcement, and admin config. Nothing user-visible ships in this sprint; it is purely the foundation.
+
+**LLM Provider Decision — chose LiteLLM + Google AI API:**
+
+> Three options were evaluated:
+>
+> | Option | Pros | Cons |
+> | --- | --- | --- |
+> | **Anthropic SDK (Claude)** | Best reasoning quality; first-class tool use | Per-token cost; Anthropic-specific SDK |
+> | **OpenRouter (hosted proxy)** | Single key, 200+ models, easy switching | Requests routed through third party (latency + privacy); markup over direct pricing; extra SLA dependency |
+> | **LiteLLM (chosen)** | Unified interface over any provider; runs in-process (no extra hop); no data to third-party proxy; `GEMINI_API_KEY` reused | Provider keys still managed per provider |
+>
+> **Decision:** LiteLLM calling `gemini/gemini-2.0-flash` via `GEMINI_API_KEY` (Google AI Studio). The `gemini/` model prefix tells LiteLLM to use the Google AI Studio path; swapping to any other provider requires only an env var change — no call-site edits.
 
 **Backend:**
 
-- [ ] Claude API integration: `AnthropicClient` wrapper with retry logic and circuit breaker
+- [x] LiteLLM integration: `LLMClient` wrapper using `litellm.acompletion`; tenacity retry (3 attempts, exponential backoff 1 s → 30 s) on transient errors; async circuit breaker (opens after 5 consecutive final failures, resets after 60 s); model configured via `AI_MODEL` env var (default `gemini/gemini-2.0-flash`)
 
-- [ ] Prompt template system (Jinja2): `quiz_feedback.j2`, `assignment_feedback.j2`
+- [x] Prompt template system (Jinja2): `app/modules/ai/prompts/` directory with `base.j2`; `render_prompt(template_name, **kwargs)` helper in `service.py`; per-feature templates added in 7B/7C
 
-- [ ] Celery task: `generate_quiz_feedback(submission_id)` — triggered post-submit
+- [x] Token usage logging: `ai_usage_logs` table (`user_id`, `course_id`, `feature`, `tokens_in`, `tokens_out`, `model`, `created_at`); written asynchronously by `log_ai_usage` Celery task to avoid hot-row contention on the request path
 
-- [ ] `quiz_feedback` table and storage
+- [x] `ai_usage_budgets` table: `(course_id, ai_enabled, tone, system_prompt_override, monthly_token_limit, alert_threshold)` — admin-configurable per-course AI settings; table stays sparse (missing rows served as defaults by service layer)
 
-- [ ] Celery task: `generate_assignment_feedback(submission_id)` — triggered post-submit
+- [x] Real-time quota enforcement via Redis atomic `INCR` on key `ai:quota:{user_id}:{YYYY-MM}`; reservation released with `DECR` if budget exceeded; `get_remaining()` helper available for response headers; key expires after 35 days
 
-- [ ] Text extraction from PDF (`pdfplumber`) and DOCX (`python-docx`) for file submissions
+- [x] `X-AI-Requests-Remaining` quota infrastructure in place (`quota.get_remaining()`); header wired into student-facing endpoints in 7B/7C when those routes are created
 
-- [ ] AI feedback fields in submission response DTOs
+- [x] `GET /api/v1/admin/ai/config/{course_id}` — returns persisted config or platform defaults; does not create a row
 
-- [ ] `GET /api/v1/admin/ai/config/{course_id}` — get AI config
+- [x] `PATCH /api/v1/admin/ai/config/{course_id}` — upserts config; validates `tone` as `encouraging | neutral | strict`; validates `alert_threshold` in `[0.0, 1.0]`
 
-- [ ] `PATCH /api/v1/admin/ai/config/{course_id}` — update AI config (on/off, tone, system prompt)
+**Testing (Sprint 7A):**
 
-- [ ] Token usage logging: `ai_usage_logs` table
+- [x] Unit tests: `LLMClient` retry logic — asserts litellm called 3× on `RateLimitError` and `ServiceUnavailableError`; circuit breaker opens after threshold; open circuit short-circuits without calling litellm; successful call resets circuit
 
-**Testing (Sprint 7):**
+- [x] Unit tests: quota enforcement — Redis at limit raises `AIQuotaExceeded` and issues `DECR`; under limit returns correct remaining count; first use of month sets key TTL
 
-- [ ] Unit tests: prompt template rendering with various inputs; assert rubric, question, and answer injected correctly
+- [x] Unit tests: token count estimation (litellm path + character fallback); prompt truncation shortens last user message while preserving system message
 
-- [ ] Unit tests: AI response parsing; malformed LLM response handling
+- [x] Unit tests: `render_prompt` — tone injection, `system_prompt_override` takes precedence
 
-- [ ] Unit tests: token count estimation; prompt truncation when over context limit
-
-- [ ] Integration tests: submit short-answer quiz → Celery task fires → feedback stored (mocked Claude)
-
-- [ ] Integration tests: submit assignment → text extraction → Celery task fires → feedback stored (mocked Claude)
-
-- [ ] Integration tests: AI disabled per course → no feedback task enqueued
+- [x] Integration tests: AI config CRUD — defaults returned when no row exists; PATCH creates row; second PATCH updates without clobbering unset fields; GET after PATCH reflects persisted values; invalid tone rejected with 422; student access rejected with 403
 
 ---
 
-#### Sprint 8 — Video Transcription & RAG Indexing
+#### Sprint 7B — Quiz AI Feedback ✅
 
-**Goal:** Video lessons auto-generate transcripts; course content is indexed for RAG.
+**Goal:** Short-answer quiz submissions receive asynchronous LLM-generated feedback per question. Depends on Sprint 7A being merged.
 
 **Backend:**
 
-- [ ] Mux / Cloudflare Stream integration: upload endpoint, webhook receiver
+- [x] Prompt template: `prompts/quiz_feedback.j2` — injects rubric, question stem, and student answer
 
-- [ ] Celery task: `generate_transcript(lesson_id)` — triggered on video ready webhook
+- [x] `quiz_feedback` table and storage
 
-- [ ] Whisper API call; VTT file generation and S3 upload
+- [x] Celery task: `generate_quiz_feedback(submission_id)` — triggered post-submit; respects course AI config (on/off, tone); writes to `quiz_feedback`; logs to `ai_usage_logs`
 
-- [ ] `lesson_transcripts` table populated; admin notification sent
+- [x] AI feedback fields surfaced in quiz submission response DTOs
 
-- [ ] `GET /api/v1/lessons/{id}/transcript` — return transcript (VTT + plain text)
+**Testing (Sprint 7B):**
 
-- [ ] `PATCH /api/v1/lessons/{id}/transcript` — admin edits transcript
+- [x] Unit tests: `quiz_feedback.j2` rendering with various rubric shapes; assert question stem, student answer, and tone injected correctly
 
-- [ ] Celery task: `index_lesson(lesson_id)` — chunk + embed on lesson publish
+- [x] Unit tests: malformed LLM response handling — assert graceful fallback, no unhandled exception
 
-- [ ] `lesson_chunks` table with pgvector; embedding via OpenAI
+- [x] Integration tests: submit short-answer quiz → `generate_quiz_feedback` task fires → per-question feedback stored (mocked LLM)
 
-- [ ] Re-index triggered on lesson content or transcript update
+- [x] Integration tests: AI disabled per course → feedback task not enqueued
+
+- [x] Integration tests: quiz feedback visible in submission response DTO after task completes
+
+---
+
+#### Sprint 7C — Assignment AI Feedback
+
+**Goal:** Assignment file submissions receive asynchronous LLM-generated feedback grounded in the rubric. Depends on Sprint 7A; independent of 7B.
+
+**Backend:**
+
+- [ ] Text extraction from PDF (`pdfplumber`) and DOCX (`python-docx`) for file submissions
+
+- [ ] Prompt template: `prompts/assignment_feedback.j2` — injects rubric criteria, weights, and extracted submission text
+
+- [ ] Celery task: `generate_assignment_feedback(submission_id)` — triggered post-submit; extracts text, builds prompt, calls LLM; result stored in `assignment_submissions.ai_feedback`; logs to `ai_usage_logs`
+
+- [ ] AI feedback fields surfaced in assignment submission response DTOs; visible to admin in grading queue (advisory — human grade overrides AI score)
+
+**Testing (Sprint 7C):**
+
+- [ ] Unit tests: `assignment_feedback.j2` rendering; assert rubric criteria and weights injected correctly
+
+- [ ] Unit tests: PDF text extraction with `pdfplumber`; DOCX extraction; unsupported format returns clear error
+
+- [ ] Integration tests: submit assignment file → `generate_assignment_feedback` task fires → AI feedback stored (mocked LLM)
+
+- [ ] Integration tests: AI disabled per course → feedback task not enqueued
+
+- [ ] Integration tests: AI feedback visible to admin in grading queue; student submission DTO does not leak unpublished grade
+
+---
+
+#### Sprint 8A — Video Pipeline & Transcription ✅
+
+**Goal:** Video lessons are ingested via Mux and auto-generate transcripts that admins can review and edit. Depends on no prior sprint; 8B can proceed in parallel once the `lesson_transcripts` table exists.
+
+**Notes:**
+- Mux free plan does not support static MP4 renditions; ffmpeg is used to extract audio from the HLS stream for Whisper
+- Two-phase Mux webhook flow: `video.upload.asset_created` swaps upload ID → real asset ID; `video.asset.ready` saves playback ID and enqueues transcription
+
+**Backend:**
+
+- [x] Mux integration: `POST /api/v1/admin/lessons/{id}/video` upload endpoint; `POST /api/v1/webhooks/mux` webhook receiver handling `video.upload.asset_created` and `video.asset.ready`
+
+- [x] `lesson_transcripts` table (`id`, `lesson_id FK`, `vtt_key`, `plain_text`, `created_at`, `updated_at`)
+
+- [x] Celery task: `generate_transcript(lesson_id)` — downloads HLS audio via ffmpeg, transcribes with OpenAI Whisper, generates VTT, uploads to R2
+
+- [x] `GET /api/v1/lessons/{id}/transcript` — return transcript (VTT public URL + plain text)
+
+- [x] `PATCH /api/v1/lessons/{id}/transcript` — admin edits transcript; re-uploads VTT to R2
+
+**Testing (Sprint 8A):**
+
+- [x] Unit tests: VTT generation from Whisper response; Mux webhook signature verification
+
+- [x] Integration tests: `video.upload.asset_created` → asset ID swapped on lesson
+
+- [x] Integration tests: `video.asset.ready` → transcript task enqueued; playback ID saved
+
+- [x] Integration tests: task runs → transcript row written (mocked ffmpeg + Whisper)
+
+- [x] Integration tests: admin edits transcript → plain text + VTT updated
+
+---
+
+#### Sprint 8B — RAG Indexing
+
+**Goal:** Lesson content (text + transcripts when available) is chunked, embedded, and stored for vector search. Depends on 8A's `lesson_transcripts` table existing, but can be built against lesson text content alone and extended to include transcripts once 8A lands. Sprint 9 depends on this sprint.
+
+**Backend:**
+
+- [ ] `lesson_chunks` table with pgvector; embedding via Google `text-embedding-004` through LiteLLM (same provider as Sprint 7; avoids a second vendor key — OpenAI `text-embedding-3-small` remains an easy swap via env var if quality requires it)
+
+- [ ] Celery task: `index_lesson(lesson_id)` — chunks lesson content (markdown + transcript plain text if available), embeds via LiteLLM, stores to `lesson_chunks`; triggered on lesson publish
+
+- [ ] Re-index triggered on lesson content or transcript update; old chunks for the lesson replaced atomically
 
 - [ ] Index health: `GET /api/v1/admin/courses/{id}/index-status`
 
-**Testing (Sprint 8):**
+**Testing (Sprint 8B):**
 
 - [ ] Unit tests: text chunking algorithm (correct overlap, no orphaned sentences)
 
-- [ ] Unit tests: VTT generation from Whisper response
-
-- [ ] Integration tests: video webhook → transcript task fires → VTT stored (mocked Whisper)
-
-- [ ] Integration tests: lesson published → index task fires → chunks and embeddings stored (mocked OpenAI embeddings)
+- [ ] Integration tests: lesson published → index task fires → chunks and embeddings stored (mocked embeddings)
 
 - [ ] Integration tests: lesson content updated → re-index fires → old chunks replaced
 
@@ -1291,7 +1372,11 @@ Student          Backend                      Celery Worker
 
 - [ ] SSE streaming endpoint: `GET /api/v1/assistant/conversations/{id}/stream`
 
-- [ ] Query pipeline: embed query → pgvector cosine search (scoped to course + enrollment check) → build prompt → stream Claude response
+- [ ] Query pipeline: embed query → **relevance guard** → pgvector cosine search (scoped to course + enrollment check) → build prompt → stream LiteLLM response
+
+- [ ] **Input relevance guard:** compute cosine similarity between the student query embedding and the top-1 retrieved chunk; if max similarity < configurable threshold (default `0.30`), reject with a polite decline before any LLM call is made — satisfies S7.5 at zero extra cost since the embedding is already computed for the vector search. Two approaches were considered: (1) embedding similarity (chosen — no extra LLM call, uses existing pgvector infrastructure); (2) LLM classifier (a small model classifies on/off-topic — adds ~300ms latency and cost per request, better for nuanced cases, deferred until needed)
+
+- [ ] `ai_messages` audit fields: `relevance_score float`, `flagged bool`, `flag_reason text` — populated by relevance guard; surfaced in A8.4 admin log view
 
 - [ ] Citation extraction and injection into response
 
@@ -1299,9 +1384,9 @@ Student          Backend                      Celery Worker
 
 - [ ] `GET /api/v1/assistant/conversations` — list student's conversations per course
 
-- [ ] Token usage logged per message
+- [ ] Token usage logged per message (reuses `ai_usage_logs` from Sprint 7; quota enforcement via same Redis pattern)
 
-- [ ] Rate limiting: 20 AI queries per student per hour per course
+- [ ] Rate limiting: 20 AI queries per student per hour per course; monthly token budget enforced from Sprint 7 quota system
 
 - [ ] Scope enforcement test: student of course A cannot retrieve chunks from course B
 
@@ -1318,6 +1403,58 @@ Student          Backend                      Celery Worker
 - [ ] Integration tests: student of course A → cannot receive results from course B chunks (boundary test)
 
 - [ ] Integration tests: rate limit enforced after 20 requests
+
+- [ ] Unit tests: relevance guard rejects query with similarity below threshold; passes query above threshold
+
+- [ ] Integration tests: off-topic query → `flagged=true` in `ai_messages`; no LLM call made (assert mocked LLM not called)
+
+---
+
+#### Sprint 9B — Pronunciation Practice
+
+**Goal:** Students can record themselves speaking target phrases and receive scored pronunciation feedback.
+
+**Approach — Whisper transcription + word error rate (WER) diff for MVP:**
+
+> Three approaches were evaluated:
+>
+> | Option | Pros | Cons |
+> | --- | --- | --- |
+> | **Whisper + WER diff (chosen for MVP)** | Zero new API keys; reuses Whisper already in stack (Sprint 8); fast to ship | No per-phoneme detail; scores by word accuracy only |
+> | **Azure Pronunciation Assessment API** | Purpose-built; per-word accuracy + fluency + completeness scores; phoneme-level detail | New vendor key; extra cost per assessment; Azure dependency |
+> | **Gemini audio input (LiteLLM)** | Flexible prompting; no separate transcription step; same provider as rest of AI features | Unstructured output harder to parse into scores; less reproducible than dedicated API |
+>
+> **Decision:** Ship MVP with Whisper + WER diff (no new dependencies). Upgrade to Azure Pronunciation Assessment when per-phoneme scoring is needed. Gemini audio remains an option if structured output via tool use is sufficient.
+
+**Backend:**
+
+- [ ] Migrations: `pronunciation_exercises` (`id`, `lesson_id FK`, `target_text`, `language_code`, `difficulty`), `pronunciation_attempts` (`id`, `user_id FK`, `exercise_id FK`, `audio_s3_key`, `transcript`, `accuracy_score`, `word_scores jsonb`, `feedback text`, `created_at`)
+
+- [ ] `POST /api/v1/lessons/{id}/pronunciation/exercises` — admin creates exercise with target phrase
+
+- [ ] `GET /api/v1/lessons/{id}/pronunciation/exercises` — list exercises for lesson (enrolled students)
+
+- [ ] `POST /api/v1/pronunciation/exercises/{id}/attempts` — student uploads audio; returns presigned S3 URL for direct upload; enqueues scoring task
+
+- [ ] Celery task: `score_pronunciation_attempt(attempt_id)` — download audio from S3 → Whisper transcription → WER diff against target text → word-level accuracy scores → save to `pronunciation_attempts` → notify student
+
+- [ ] `GET /api/v1/pronunciation/exercises/{id}/attempts` — student views own attempt history with scores
+
+- [ ] `GET /api/v1/admin/courses/{id}/pronunciation/stats` — admin view: per-exercise accuracy distribution
+
+- [ ] Token/cost tracking: pronunciation Whisper calls logged to `ai_usage_logs` with `feature='pronunciation'`
+
+**Testing (Sprint 9B):**
+
+- [ ] Unit tests: WER scoring algorithm — perfect match, partial match, completely wrong
+
+- [ ] Unit tests: word-level diff produces correct per-word scores
+
+- [ ] Integration tests: upload attempt → scoring task fires → scores saved (mocked Whisper)
+
+- [ ] Integration tests: student views only their own attempts; cannot see other students' attempts
+
+- [ ] Integration tests: non-enrolled student → 403 on exercise endpoints
 
 ---
 
@@ -1441,117 +1578,386 @@ Student          Backend                      Celery Worker
 
 ---
 
-### Phase 6 — Web & Mobile Clients (Parallel with Backend Phases 2–5)
+### Phase 6 — Web & Mobile Clients
 
-> Client sprints run in parallel with backend sprints and consume the APIs as they are delivered.
+> Client sprints are sequenced against **completed** backend API surfaces, not in-progress ones. Each sprint only calls APIs that are already fully implemented and tested. Mobile sprints begin after FW1 is complete, using the same typed API client and shared hook patterns.
 
-#### Web Client Sprint W1 (parallel with Backend S1–S2)
+---
 
-- [ ] Next.js 14 project setup: App Router, Tailwind, ESLint, TypeScript strict
+#### Web Client Sprint FW1-A — Project Skeleton + Design System
 
-- [ ] API client (typed, auto-generated from OpenAPI spec via `openapi-typescript`)
+> **Backend dependency:** None. Pure frontend scaffolding and design foundation.
 
-- [ ] Auth: login page, register page, OAuth redirect, token refresh interceptor
+- [x] React 19 + Vite 6 project setup: TypeScript strict, Tailwind CSS v4, ESLint, path aliases (`@/` → `src/`)
+- [x] `globals.css` — `@theme` block with all brand tokens: `--color-brand-primary: oklch(0.75 0.16 70)` (amber `#F5A623`), `--color-brand-secondary: oklch(0.42 0.08 240)` (navy `#355E87`), `--color-brand-cta: oklch(0.62 0.19 42)` (orange `#F0621D`), `--color-brand-dark: oklch(0.33 0.06 237)` (deep navy `#2C4A5C`); Inter + JetBrains Mono font imports via `@fontsource`; `--radius: 0.5rem`
+- [x] `pnpm dlx shadcn@latest init` — shadcn/ui setup; override `--primary`, `--ring`, `--destructive` in `globals.css :root` to match brand tokens; dark mode is not in scope — no `@variant dark` block
+- [x] `cn()` utility in `src/lib/utils.ts` (clsx + tailwind-merge); use for all conditional class composition — never string concatenation
+- [x] `<Logo />` component (`src/components/layout/Logo.tsx`): accepts `height` prop, computes width from intrinsic aspect ratio; renders `logo-1.png` (252×356 portrait) or `logo-2.png` (481×220 landscape) based on `variant` prop; never reference logo files directly elsewhere in the codebase
+- [x] Shared pattern components (§13.8) — built once here, imported across every subsequent sprint:
+  - `<SkeletonCard />` / `<SkeletonText />` — animated pulse placeholder; all async content uses these, never a spinner over blank space
+  - `<Toast />` system — success (green) / error (red) / info (neutral); auto-dismiss after 4 seconds; positions top-center on web
+  - `<ConfirmModal />` — destructive action confirmation: description text + "Cancel" + red-colored confirm button; required for delete, remove, refund, revoke actions
+  - `<EmptyState icon message cta? />` — shared shell for all empty list states (icon or illustration + message + optional CTA button)
+  - `<LessonDot state />` — 3-state completion indicator: empty circle (not started) / half-filled (in progress) / filled checkmark (complete); amber fill color
+  - `<CourseProgressBar percent />` — always renders percentage numeral alongside bar; never a bar without a number
+  - `<FileUploadZone />` — drag-and-drop zone with border highlight on drag-over; accepted file types + max size shown below zone; post-upload: file name + size + type icon + remove button; uploading: progress bar within zone; error: red border + message + "Try again"
+- [x] CI: GitHub Actions workflow (`.github/workflows/web-ci.yml`) — lint (`eslint`), type check (`tsc --noEmit`) on every push/PR touching `web/**`
 
-- [ ] Protected routes: middleware redirects unauthenticated users
+---
 
-- [ ] Course browse page: grid, filter sidebar, search
+#### Web Client Sprint FW1-B — API Client + Auth Infrastructure
 
-- [ ] Course detail page: syllabus, instructor, reviews (SSR)
+> **Backend dependency:** S1 (auth endpoints stable).
 
-- [ ] Vitest + React Testing Library setup; Playwright setup
+- [x] API client: auto-generate TypeScript types from `/openapi.json` via `openapi-typescript`; build a base `apiFetch` wrapper with auth header injection, automatic access token refresh on 401, and typed response parsing
+- [x] Token management: store access token in memory (not localStorage); store refresh token in httpOnly cookie (set by backend); silent refresh on app load; logout clears both
+- [x] Zustand auth store: `user`, `isAuthenticated`, `login`, `logout`, `refresh` actions
+- [x] React Router v6: route tree definition, `<ProtectedRoute>` wrapper (redirects unauthenticated users to `/login` with `?next=` param), `<PublicRoute>` wrapper (redirects authenticated users away from auth pages); all routes stubbed with placeholder pages
 
-- [ ] CI: web lint, type check, unit tests, Playwright smoke test on every PR
+---
 
-**Screens to implement (§13 design spec):** WEB-P1 (Landing), WEB-P2 (Course Catalog), WEB-P3 (Course Detail — unenrolled state), WEB-P4 (Login), WEB-P5 (Register), WEB-P6 (Forgot / Reset Password)
+#### Web Client Sprint FW1-C — Auth Pages
 
-#### Web Client Sprint W2 (parallel with Backend S3–S4)
+> **Backend dependency:** S1 (auth endpoints stable).
 
-- [ ] Enrolled course dashboard: progress cards, continue CTA
+- [x] Design: confirm form layouts for WEB-P4–P6 (§13.5) — keyboard-aware vertical form structure, error state placement below each field, Google OAuth button order, email verification prompt illustration placement; form max-width 400px centered
+- [x] Login (WEB-P4): email + password fields, Google OAuth button, "Forgot password?" link, inline error states (invalid credentials, account not verified), loading state on submit button
+- [x] Register (WEB-P5): full name, email, password, Google OAuth button, terms acknowledgement checkbox, post-submit email verification prompt screen
+- [x] Forgot password (WEB-P6): email input + "Check your email" confirmation screen
+- [x] Reset password (WEB-P6): new password + confirm fields, success redirect to login
+- [x] Email verification landing: token-in-URL verification; success state (redirect to dashboard) + expired/invalid token state (resend link)
+- [x] All auth pages: use `<PublicRoute>` wrapper; amber primary CTA buttons; navy links
 
-- [ ] Lesson page: video player (HLS + captions), rich-text content, resource downloads
+---
 
-- [ ] Lesson sidebar: chapter/lesson nav, completion indicators, lock state
+#### Web Client Sprint FW1-D — Public Pages
 
-- [ ] Progress auto-save hook (30s interval + `beforeunload`)
+> **Backend dependency:** S1–S2 (course structure endpoints stable).
 
-- [ ] Notes and bookmarks UI
+- [x] Design: confirm hero section layout for WEB-P1 (full-width photo, headline, CTA placement); course card component spec (image, title, level badge, price, enrollment count, progress indicator if enrolled); filter sidebar collapse to drawer at 768px; 3 CTA states on WEB-P3 (unenrolled / enrolled / completed); breakpoints 768px and 1280px
+- [x] Landing page (WEB-P1): full-width photo hero (warm, real photography matching xoxoeducation.com visual language); headline + "Browse Courses" amber CTA; featured courses grid (3–4 cards); value props strip (3 columns); social proof row (student count, courses, completions); footer
+- [x] Course catalog (WEB-P2): course grid, filter sidebar (category, level, price, language — collapses to drawer at ≤768px), search bar, sort dropdown, pagination; enrolled indicator on cards for authenticated students; `<EmptyState>` for no-results state
+- [x] Course detail (WEB-P3): syllabus accordion (chapters + lessons with `<LessonDot>`), instructor bio, reviews + rating, course stats; three CTA states — unenrolled ("Enroll" or "Buy Now") / enrolled ("Continue") / completed ("View Certificate")
 
-- [ ] Quiz component: question renderer, answer selection, submission, feedback display
+---
 
-- [ ] Assignment submission: text editor + file upload (presigned URL flow)
+#### Web Client Sprint FW1-E — Student Dashboard
 
-**Screens to implement (§13 design spec):** WEB-S1 (Student Dashboard), WEB-S2 (Course Player Shell), WEB-S3 (Video Lesson), WEB-S4 (Text Lesson), WEB-S5 (Quiz — all states), WEB-S6 (Assignment — states A & B: submission + pending)
+> **Backend dependency:** S3 (enrollment + progress endpoints stable).
 
-#### Web Client Sprint W3 (parallel with Backend S5–S9)
+- [x] Design: confirm WEB-S1 (§13.5) — enrolled course progress card layout (image, title, `<CourseProgressBar>`, continue CTA); empty state spec using `<EmptyState>` component
 
-- [ ] Stripe checkout integration
+- [x] Student dashboard (WEB-S1): enrolled course progress cards (course image, title, `<CourseProgressBar>` with percentage, "Continue" CTA); `<EmptyState>` ("You haven't enrolled in any courses yet." + Browse Courses CTA) for new students; `<SkeletonCard>` loaders while fetching enrollments
 
-- [ ] Certificate page: download PDF, share verification link
+---
 
-- [ ] AI assistant chat UI: SSE streaming display, citations, conversation history
+#### Web Client Sprint FW1-F — Course Player Shell
 
-- [ ] Admin: course builder (chapter/lesson CRUD, drag-and-drop reorder)
+> **Backend dependency:** S2–S3 (course structure + progress endpoints stable).
 
-- [ ] Admin: quiz builder
+- [x] Design: confirm WEB-S2 (§13.5) — sidebar width (280px) and collapse behavior at 768px / 1280px breakpoints; `<LessonDot>` placement in nav items; amber 3px left border for active lesson; chapter fraction + mini progress bar per chapter header; padlock icon + tooltip wording for locked lessons (§13.8); AI floating button position (amber, bottom-right of content area)
+- [x] Course player shell (WEB-S2): fixed left sidebar (280px, **open by default** at ≥1280px); collapse toggle on sidebar edge; slide-in drawer with "Contents" trigger at ≤768px; sidebar content: chapter headers with "N/M lessons" fraction + mini `<CourseProgressBar>`, lesson nav items with `<LessonDot>`, active-lesson amber 3px left border, padlock icon + tooltip for locked lessons; top bar with course title, `<CourseProgressBar>`, prev/next nav; AI assistant floating button (amber, bottom-right, **inactive** — shows "Coming soon" tooltip until FW3-C)
 
-- [ ] Admin: assignment builder with AI rubric suggestion
+---
 
-- [ ] Admin: submission grading queue
+#### Web Client Sprint FW1-G — Video Lesson
 
-**Screens to implement (§13 design spec):** WEB-P7 (Certificate Verification — public), WEB-S6 (Assignment — states C & D: AI + human feedback), WEB-S8 (AI Course Assistant panel), WEB-S10 (My Certificates), WEB-A1 (Admin Dashboard), WEB-A2 (Course List), WEB-A3 (Create/Edit Course Settings), WEB-A4 (Content Builder), WEB-A5 (Lesson Editor — all types), WEB-A6 (Quiz Builder), WEB-A7 (Assignment Builder), WEB-A8 (Student Management), WEB-A9 (Submission Grading Queue), WEB-A10 (Course Analytics), WEB-A13 (AI Configuration)
+> **Backend dependency:** S2–S3 (lesson content + progress endpoints stable).
 
-#### Web Client Sprint W4 (parallel with Backend S10–S12)
+- [x] Design: confirm WEB-S3 (§13.5) — Video.js player proportions (16:9); transcript panel placement (right rail); secondary scrub-bar marker color and appearance; notes panel open/closed toggle position; resources list below player; mark-complete button placement
+- [x] Video lesson (WEB-S3): Video.js HLS player with adaptive bitrate; caption toggle; synced transcript panel (searchable, highlights current segment, click to seek); secondary scrub-bar marker showing previous watch position (§13.8 Progress Indicators); notes panel (add / edit / delete, attached to timestamp); downloadable resources list; mark complete button (auto-triggers at 80% watch time)
 
-- [ ] Discussion threads: post, reply, upvote, flag, mentions
+---
 
-- [ ] Notification center: real-time badge, list, mark-read
+#### Web Client Sprint FW1-H — Text Lesson
 
-- [ ] Calendar page: upcoming live sessions, iCal export
+> **Backend dependency:** S2–S3 stable.
 
-- [ ] Admin: analytics dashboard (charts: completion, quiz scores, engagement)
+- [x] Design: confirm WEB-S4 (§13.5) — rich text renderer element styles (18px body, heading hierarchy, code block appearance using JetBrains Mono, image max-width, blockquote style); notes panel consistent with FW1-G treatment
+- [x] Text lesson (WEB-S4): rich text renderer (headings, bold/italic, lists, code blocks with mono font, images, embeds); 18px body text; notes panel (same pattern as FW1-G); downloadable resources; mark complete button; progress auto-save (30-second interval + `beforeunload` listener)
 
-- [ ] Admin: announcements
+---
 
-- [ ] Admin: AI usage dashboard
+#### Web Client Sprint FW1-I — Quiz Lesson
 
-- [ ] Playwright: all critical journey E2E tests
+> **Backend dependency:** S4 (quiz endpoints stable).
 
-- [ ] Accessibility audit: axe-core scan; WCAG 2.1 AA fixes
+- [x] Design: confirm WEB-S5 (§13.5) — all 4 question type layouts (single-choice, multiple-choice, true/false, short-answer input); countdown timer bar appearance and color transition as time decreases; results screen layout (score summary, per-question correct/incorrect rows, explanation, AI feedback card skeleton per §13.8); retake button placement
+- [x] Quiz lesson (WEB-S5): all question types rendered (single-choice, multiple-choice, true/false, short-answer); countdown timer with visual bar; question-by-question flow with prev/next; submit confirmation; results screen (score, per-question correct/incorrect with explanation); AI feedback card slot renders `<SkeletonCard>` placeholder — activates in FW3-A; retake button (if attempts remaining); all states: not started / in progress / submitted / results
 
-**Screens to implement (§13 design spec):** WEB-S7 (Code Exercise Lesson), WEB-S9 (Discussion Thread — embedded in all lessons), WEB-S11 (Bookmarks), WEB-S12 (Calendar), WEB-S13 (Notification Center), WEB-S14 (Profile & Account Settings), WEB-A11 (Batch / Cohort Management), WEB-A12 (Announcements), WEB-A14 (Payment & Billing), WEB-A15 (Platform Settings), WEB-A16 (Moderation Queue), WEB-A17 (Certificate Request Queue), WEB-A18 (Student Detail — admin)
+---
 
-#### Mobile Client Sprint M1 (parallel with Web W1–W2)
+#### Web Client Sprint FW1-J — Assignment Lesson
 
-- [ ] Expo project setup: TypeScript, Expo Router, Tailwind (NativeWind)
+> **Backend dependency:** S4 (assignment endpoints stable).
 
-- [ ] Auth screens: login, register, OAuth (PKCE)
+- [x] Design: confirm WEB-S6 states A & B (§13.5) — state A: `<FileUploadZone>` placement relative to rich text editor, uploaded file list appearance; state B: submission receipt layout, `<SkeletonCard>` AI feedback placeholder, `<Toast info>` message wording
+- [x] Assignment lesson (WEB-S6 — states A & B): state A (not submitted) — rich text editor + `<FileUploadZone>` (presigned URL flow, shows file name + size + remove, progress bar during upload); state B (pending AI feedback) — submission receipt with timestamp, `<SkeletonCard>` AI feedback placeholder + `<Toast info>` "AI feedback is being generated. We'll notify you when it's ready."
 
-- [ ] Course browse + detail screens
+---
 
-- [ ] Lesson screen: expo-video player with captions, rich-text renderer
+#### Web Client Sprint FW1-K — Notes, Bookmarks + Testing
 
-- [ ] Progress auto-save with offline queue (flush on reconnect)
+> **Backend dependency:** S3 (notes + bookmarks endpoints stable).
 
-- [ ] Jest + React Native Testing Library setup; Detox setup
+- [x] Notes sidebar: global notes list accessible from course player sidebar; each note shows timestamp + lesson name + note text; click navigates to that lesson at that timestamp
+- [x] Bookmark toggle on any lesson nav item in the course player sidebar
+- [x] Bookmarks page (WEB-S11): placeholder route at `/me/bookmarks` — `<EmptyState>` "Bookmarks coming soon"; full UI in FW4-C
+- [x] Vitest + React Testing Library setup: configure `jsdom`, path aliases, global test utilities; smoke tests for auth flows, course card rendering, `<LessonDot>` all 3 states, `<CourseProgressBar>` rendering, quiz question renderer
+- [x] Playwright setup: install, configure `playwright.config.ts` with base URL; smoke E2E covering login → dashboard → open lesson → mark complete
+- [x] CI: add Vitest run and Playwright smoke test to GitHub Actions workflow (runs on every PR against `vite preview` build)
+
+---
+
+#### Web Client Sprint FW2-A — Payments + Certificates
+
+> **Backend dependency:** S5 (Stripe payments + certificate endpoints stable).
+
+- [ ] Design: confirm Stripe Checkout redirect flow (success screen layout, `<Toast success>` welcome message); WEB-S10 certificate card design (course name, issue date, verification link, PDF download + copy link actions, `<EmptyState>`); WEB-P7 public verification page (valid cert details vs invalid token error — never a generic 404)
+- [ ] Stripe Checkout: "Buy Now" on WEB-P3 initiates Checkout session via API; handle success redirect (confirm enrollment, show `<Toast success>`); handle cancel redirect (return to course detail); coupon code field in checkout flow
+- [ ] My Certificates (WEB-S10): certificate cards (course name, issue date, verification link); download PDF button; copy verification link button; `<EmptyState>` ("Complete a course to earn your first certificate." + Browse Courses CTA)
+- [ ] Certificate verification (WEB-P7): public route, no auth required; valid state — student name, course title, completion date, instructor name, verification badge; invalid token state — clear error message, not a generic 404
+
+---
+
+#### Web Client Sprint FW2-B — Admin Layout + Dashboard
+
+> **Backend dependency:** S6 (analytics endpoints stable).
+
+- [ ] Design: confirm admin sidebar structure — deep navy (`#2C4A5C`) two-level layout; active state (amber left border + lighter navy background); icon-only collapse at ≤1024px; admin top bar with avatar + logout; WEB-A1 KPI card layout and sparkline chart placement (§13.1: admin efficiency over aesthetics — high density, minimal clicks)
+- [ ] Admin layout shell: persistent deep navy two-level sidebar; top-level sections with icons + labels — **Courses** (Course List, Content, Students, Submissions, Analytics, AI Config) / **Students** (All Students) / **Revenue** (Payments, Coupons) / **Platform** (Announcements, Settings); active state: amber left border + slightly lighter navy background; collapsible to icon-only at ≤1024px; admin top bar with avatar + logout; `<ProtectedRoute>` requiring `admin` role
+- [ ] Admin overview dashboard (WEB-A1): KPI cards (total enrollments, monthly revenue, active students, avg completion rate, pending submissions with badge); enrollment + revenue sparkline trend charts (last 30 days); top courses table (enrollment + completion rate); pending queue badges linking to grading queue; `<SkeletonCard>` loaders while data fetches
+
+---
+
+#### Web Client Sprint FW2-C — Course Management
+
+> **Backend dependency:** S2 (course CRUD stable).
+
+- [ ] Design: confirm WEB-A2 table columns and row action dropdown menu; WEB-A3 form field layout (thumbnail upload using `<FileUploadZone>`, free/paid toggle, config toggles); `<ConfirmModal>` treatment for archive and delete actions
+- [ ] Course list (WEB-A2): table (course image, title, status badge — Draft / Published / Archived, enrollment count, last updated); status filter tabs; row actions — Edit Settings / Content Builder / Analytics / Archive / Delete (uses `<ConfirmModal>`); "Create New Course" primary CTA
+- [ ] Create / Edit course settings (WEB-A3): title, slug (auto-generated, editable), description, category, level, language, price (free/paid toggle + price input), thumbnail upload (`<FileUploadZone>`); per-course config toggles (enforce lesson order, allow certificate, require passing score, AI feedback on/off, AI assistant on/off); status toggle (Draft → Published with `<ConfirmModal>`); Save Draft / Publish / Preview Course actions
+
+---
+
+#### Web Client Sprint FW2-D — Course Content Builder
+
+> **Backend dependency:** S2 (chapter + lesson CRUD stable).
+
+- [ ] Design: confirm WEB-A4 two-panel layout (left outline tree, right editor panel); drag handle appearance for reorder; lesson type badge color per type (video / text / quiz / assignment); unsaved changes warning modal
+- [ ] Course content builder (WEB-A4): two-panel layout — left: chapter/lesson outline tree with drag-and-drop reorder (chapters and lessons independently); "Add Chapter" button; per-chapter "Add Lesson" button; lesson type badge; chapter collapse/expand; right panel: inline lesson editor (renders WEB-A5 — see FW2-E); unsaved changes `<ConfirmModal>` on navigate-away
+
+---
+
+#### Web Client Sprint FW2-E — Lesson Editor
+
+> **Backend dependency:** S2 (lesson CRUD stable); S4 (quiz + assignment schemas needed for type-specific tabs).
+
+- [ ] Design: confirm WEB-A5 (§13.5) tab structure for each lesson type; video upload stepped progress states (Uploading → Processing → Generating Transcript → Ready); text block editor toolbar; quiz/assignment delegation (tab label + embedded builder — FW2-F)
+- [ ] Lesson editor (WEB-A5): tabbed by lesson type — **Video**: upload dropzone (`<FileUploadZone>`), stepped upload progress (Uploading nn% → Processing → Generating Transcript → Ready), editable transcript, thumbnail selector; **Text**: block-based rich text editor (headings, lists, images, embeds, code); **Quiz**: delegates to quiz builder (WEB-A6 — FW2-F); **Assignment**: delegates to assignment builder (WEB-A7 — FW2-F); all types: title field, resource file attachments, publish toggle
+
+---
+
+#### Web Client Sprint FW2-F — Quiz + Assignment Builders
+
+> **Backend dependency:** S4 (quiz + assignment CRUD stable).
+
+- [ ] Design: confirm WEB-A6 (§13.5) question type selector and per-question form layout; drag handle for reorder; quiz-level settings placement; WEB-A7 rubric table (criteria rows, weight validation, AI suggestion button in inactive/locked state with tooltip "Available once AI features are enabled")
+- [ ] Quiz builder (WEB-A6): question type selector (single-choice, multiple-choice, true/false, short-answer); per-question: question text, answer options with correct answer toggle, explanation text, point value; drag-to-reorder; quiz-level settings (time limit, max attempts, passing score %); add/remove questions
+- [ ] Assignment builder (WEB-A7): rich text instructions editor; rubric table — criteria rows (name, description, max points), add/remove rows, weight validation (must sum to 100%); AI rubric suggestion button (visible, inactive — tooltip "Available once AI features are enabled" — activates in FW3-B); submission type toggles (text / file upload / both); deadline config
+
+---
+
+#### Web Client Sprint FW2-G — Student Management
+
+> **Backend dependency:** S3 (enrollment endpoints stable), S6 (progress data stable).
+
+- [ ] Design: confirm WEB-A8 (§13.5) table columns; enroll-by-email inline form; bulk CSV upload flow; `<ConfirmModal>` for remove student with email notification toggle inside modal
+- [ ] Student management — course level (WEB-A8): enrolled students table (name, email, enrolled date, progress %, last active, quiz avg score); enroll student by email (inline form); bulk enroll via CSV upload; remove student (`<ConfirmModal>` with optional email notification toggle); export table as CSV; `<EmptyState>` for no enrolled students
+
+---
+
+#### Web Client Sprint FW2-H — Submission Grading Queue
+
+> **Backend dependency:** S6 (grading endpoints stable).
+
+- [ ] Design: confirm WEB-A9 (§13.5) two-panel layout — left list width and status badge colors (Ungraded / AI Reviewed / Draft Grade / Published); right panel: dashed-border AI feedback placeholder card (lock icon + message); rubric score input row layout; auto-total display; Save Draft vs Publish Grade button visual distinction
+- [ ] Submission grading queue (WEB-A9): two-panel layout — left: submission list (student name, course, assignment title, submitted date, status badge); filter by status; right: submission detail — student info, submission content (text + file download), AI feedback card slot (dashed-border `<SkeletonCard>` placeholder "AI feedback will appear here once AI features are enabled" with lock icon — activates in FW3-B); rubric score inputs (per criterion, auto-totaled vs max); human feedback rich text; Save Draft / Publish Grade buttons; reopen submission action; published grade triggers `<Toast success>` + student notification
+
+---
+
+#### Web Client Sprint FW2-I — Course Analytics
+
+> **Backend dependency:** S6 (analytics endpoints stable).
+
+- [ ] Design: confirm WEB-A10 (§13.5) chart layouts — drop-off funnel (horizontal bar or step chart), video watch heatmap (color gradient per lesson), quiz stats table columns, student progress histogram; export CSV button placement
+- [ ] Course analytics (WEB-A10): lesson drop-off funnel (% of students completing each lesson in sequence); video watch heatmap (avg watch % per lesson); quiz stats table (per question: avg score, % correct, most common wrong answer, attempts distribution histogram); student progress histogram (distribution of % completion across enrolled students); export as CSV
+
+---
+
+#### Web Client Sprint FW2-J — Announcements
+
+> **Backend dependency:** S6 (announcements endpoints stable).
+
+- [ ] Design: confirm WEB-A12 (§13.5) compose form layout — rich text body, subject line, audience selector (all platform / specific courses multi-select), schedule send datetime picker vs send now; sent announcements list table columns
+- [ ] Announcements (WEB-A12): compose form — rich text body, subject line, audience selector (all platform students / students enrolled in specific course(s)); schedule send toggle (datetime picker) vs send now; `<ConfirmModal>` before send now; sent announcements list (subject, audience, sent date, delivered count)
+
+---
+
+#### Web Client Sprint FW2-K — Payment & Billing Admin
+
+> **Backend dependency:** S5 (Stripe + coupon endpoints stable).
+
+- [ ] Design: confirm WEB-A14 (§13.5) tab layout — Transactions table with refund button + `<ConfirmModal>`; Revenue charts (daily/weekly/monthly toggle, date range picker); Coupons table + create form (% vs fixed discount, usage limit, expiry date)
+- [ ] Payment & billing (WEB-A14): tabs — **Transactions**: table (student, course, amount, date, status); refund action (`<ConfirmModal>` → Stripe refund API → `<Toast success>`); **Revenue**: daily/weekly/monthly chart with date range picker; breakdown by course table; **Coupons**: coupon list (code, discount type, value, usage count / limit, active toggle, expiry); create coupon form (code, % or fixed discount, usage limit, expiry date, per-course or global); activate/deactivate toggle; delete coupon (`<ConfirmModal>`)
+
+---
+
+#### Web Client Sprint FW2-L — Students Admin
+
+> **Backend dependency:** S1 (user management), S3 (enrollments), S4 (submissions).
+
+- [ ] Design: confirm WEB-A18 (§13.5) all-students table columns and search/filter placement; student detail page section layout (enrollment history, quiz history, submission history); role badge appearance; `<ConfirmModal>` treatment for promote/demote and remove-from-platform
+- [ ] All students (WEB-A18): table (name, email, role badge, join date, enrollments count, last active); search + filter; `<EmptyState>` for no results
+- [ ] Student detail (WEB-A18): enrollment history with `<CourseProgressBar>` per course; quiz attempt history; assignment submission history with grades; role badge; promote/demote role action (`<ConfirmModal>`); remove from platform action (`<ConfirmModal>`)
+
+---
+
+#### Web Client Sprint FW3-A — Student AI Feedback
+
+> **Backend dependency:** S7 (Claude feedback endpoints stable).
+
+- [ ] Design: confirm AI feedback card visual treatment per §13.8 — "AI Feedback" label + amber sparkle icon; navy `#355E87` border; per-criterion breakdown as a list (not a wall of text); tone is always constructive; visually distinct from human feedback; WEB-S6 state C (AI feedback only) and state D (AI + human side by side) layouts; skeleton-to-card transition animation
+- [ ] Activate AI feedback card in WEB-S5 (quiz results): replace `<SkeletonCard>` placeholder with real data — "AI Feedback" label + amber sparkle icon; navy border card; per-question criterion breakdown as a list; tone reflects course-level tone setting (encouraging / neutral / academic); never punitive
+- [ ] Activate AI feedback card in WEB-S6 (assignment): state C (AI feedback received) — AI feedback card with criterion breakdown; state D (fully graded) — AI feedback card + human feedback section side by side with rubric scores and total grade; "Feedback pending → Feedback ready" transition via poll or SSE — card populates without page reload
+
+---
+
+#### Web Client Sprint FW3-B — Admin AI Integration
+
+> **Backend dependency:** S7 (Claude feedback stable).
+
+- [ ] Design: confirm WEB-A9 grading queue with real AI feedback card replacing dashed placeholder; WEB-A7 assignment builder "Suggest Rubric" button active state (streaming criteria populating rubric table rows one by one)
+- [ ] Activate AI feedback card in WEB-A9 (grading queue): replace dashed-border placeholder with real AI feedback data when available; admin sees AI feedback + rubric scores + their own scoring form simultaneously
+- [ ] Activate AI rubric suggestion in WEB-A7 (assignment builder): "Suggest Rubric" button calls AI endpoint with assignment description; streams suggested criteria into rubric table rows (editable after generation)
+
+---
+
+#### Web Client Sprint FW3-C — AI Course Assistant Panel
+
+> **Backend dependency:** S8–S9 (Whisper + RAG endpoints stable).
+
+- [ ] Design: confirm WEB-S8 (§13.5) — panel slide-in at 40% content width; lesson content area shrinks to 60%; typewriter animation for streaming response text; three-dot "thinking" indicator before first token arrives; citation chip appearance and click-to-navigate behavior; conversation history list (last 8 turns); close animation restoring full content width
+- [ ] SSE connection management utility (`src/lib/sse.ts`): establish `EventSource` connection; handle `data:` events and append to state; handle `[DONE]` sentinel; reconnect on drop with exponential backoff; cleanup on component unmount
+- [ ] AI course assistant panel (WEB-S8): activate floating button (already present since FW1-F); panel slides in at 40% width; lesson content area shrinks to 60%; streaming response word-by-word (typewriter effect); three-dot "thinking" indicator before first token; citation chips below each response ("Source: Chapter 1 › Lesson 2") that navigate to lesson on click; conversation history loads last 8 turns on open; new conversation button; close panel restores full content width; graceful `<EmptyState>` error if AI unavailable
+
+---
+
+#### Web Client Sprint FW3-D — AI Configuration
+
+> **Backend dependency:** S7–S9 (all AI endpoints stable).
+
+- [ ] Design: confirm WEB-A13 (§13.5) — per-course feature toggle layout; tone selector (segmented control with one-line description per tone); system prompt textarea with live character count; token budget input + 80% alert toggle; AI interaction log table columns
+- [ ] AI configuration (WEB-A13): per-course settings form — feature toggles (quiz AI feedback / assignment AI feedback / AI assistant on/off); tone selector (Encouraging / Neutral / Academic with descriptions); system prompt override textarea (with live character count); monthly token budget (input + "Alert me at 80%" toggle); AI interaction log table (date, feature, tokens in/out, model, truncated prompt preview); export log as CSV
+
+---
+
+#### Web Client Sprint FW4-A — Notification Center
+
+> **Backend dependency:** S10 (notification + WebSocket/SSE endpoints stable).
+
+- [ ] Design: confirm WEB-S13 (§13.5) — notification list item layout (per-type icon, unread highlight, relative timestamp); "Mark all as read" button placement; real-time unread badge position in top nav; `<EmptyState>` for all-caught-up state
+- [ ] Notification center (WEB-S13): full-page list sorted by recency; per-notification-type icon (assignment graded, certificate issued, discussion reply, announcement, live session reminder); unread highlight; "Mark all as read" button; real-time unread badge in top nav (WebSocket or SSE connection via `src/lib/sse.ts`); `<EmptyState>` ("You're all caught up.")
+
+---
+
+#### Web Client Sprint FW4-B — Discussion Threads
+
+> **Backend dependency:** S10 (discussion endpoints stable).
+
+- [ ] Design: confirm WEB-S9 (§13.5) — discussion section embedded at bottom of every lesson page; thread composer placement; reply nesting appearance (1 level); upvote count; flag action; `@username` autocomplete dropdown; optimistic post appearance; pagination vs infinite scroll decision
+- [ ] Discussion threads (WEB-S9): embedded at bottom of every lesson page (WEB-S3, WEB-S4, WEB-S5, WEB-S6); post new thread (rich text, 1 level of replies); reply; upvote post / reply; flag content (sends to moderation queue); `@username` autocomplete; optimistic UI (appears immediately, rolls back with `<Toast error>` on failure); pagination or infinite scroll for long threads
+
+---
+
+#### Web Client Sprint FW4-C — Calendar + Bookmarks
+
+> **Backend dependency:** S11 (cohort + live session endpoints stable).
+
+- [ ] Design: confirm WEB-S12 (§13.5) month/week toggle views; session event appearance on calendar; session detail panel (title, course, join link, instructor); iCal export button placement; WEB-S11 bookmarks list grouped by course (lesson title + chapter + `<LessonDot>` state)
+- [ ] Calendar (WEB-S12): month/week toggle; upcoming live session events; click session → detail panel (title, course, join link, instructor); "Add to Calendar" generates `.ics` file download; `<EmptyState>` for no upcoming sessions
+- [ ] Bookmarks page (WEB-S11): full implementation replacing FW1-K placeholder; lessons grouped by course; lesson title + chapter + `<LessonDot>` completion state; click to jump directly to lesson in course player
+
+---
+
+#### Web Client Sprint FW4-D — Profile + Account Settings
+
+> **Backend dependency:** S1 (profile endpoints), S10 (notification preferences).
+
+- [ ] Design: confirm WEB-S14 (§13.5) — tab layout (Profile / Account / Notifications / Privacy & Data); avatar upload using `<FileUploadZone>`; email change two-step flow (confirm current password → send verification email); account deletion `<ConfirmModal>` with strong warning copy
+- [ ] Profile & account settings (WEB-S14): **Profile** tab — display name, avatar upload (`<FileUploadZone>`), bio, headline; **Account** tab — email change flow, password change flow, connected Google account; **Notifications** tab — per-type toggles (email / in-app); **Privacy & Data** tab — GDPR data export request, account deletion request (`<ConfirmModal>`)
+
+---
+
+#### Web Client Sprint FW4-E — Admin Real-Time + Social Features
+
+> **Backend dependency:** S10–S11 (discussion, moderation, cohort, live session endpoints stable).
+
+- [ ] Design: confirm WEB-A11 (§13.5) cohort detail tab layout (Roster / Timetable / Live Sessions / Announcements); WEB-A15 platform settings section layout; WEB-A16 moderation queue table + row actions; WEB-A17 certificate queue with Approve/Reject and required rejection reason field
+- [ ] Batch / cohort management (WEB-A11): cohort list; cohort detail tabs — Roster (enrolled students), Timetable (sessions), Live Sessions (join links, recordings), Announcements (cohort-scoped)
+- [ ] Platform settings (WEB-A15): sections — General (site name, logo upload, default language); Authentication (Google OAuth toggle, email verification required toggle); Email (Resend config, test email button); Integrations (Mux / Cloudflare Stream keys, Stripe keys, Zoom OAuth)
+- [ ] Moderation queue (WEB-A16): flagged posts table (flagged by, content preview, lesson context, flag date); row actions — View in Context / Dismiss Flag / Delete Post (`<ConfirmModal>`)
+- [ ] Certificate request queue (WEB-A17): Approve & Issue button (triggers generation + `<Toast success>` + student notification) / Reject (`<ConfirmModal>` requiring written reason, sent to student)
+
+---
+
+#### Web Client Sprint FW4-F — Hardening
+
+> **Backend dependency:** All FW1–FW4 sprints complete.
+
+- [ ] AI usage dashboard: tokens consumed per course, per feature type (quiz feedback / assignment feedback / assistant); daily/weekly chart; estimated cost (based on model pricing); CSV export — surface in WEB-A13 or WEB-A1
+- [ ] Playwright: implement all 9 critical E2E journey tests (§13.7 Flows 1–9) against full staging environment
+- [ ] Accessibility audit: run `axe-core` scan across all screens; resolve all WCAG 2.1 AA violations (§5 WCAG 2.1 Level AA)
+
+---
+
+#### Mobile Client Sprint FM1 — Auth + Browse + Learning Core
+
+> **Starts after FW1 is complete.** The typed API client and core hook patterns (`useEnrollment`, `useProgress`, `useAuth`) established in FW1 are re-used directly.
+
+- [ ] Expo project setup: TypeScript strict, Expo Router (file-based), NativeWind (Tailwind CSS for React Native), ESLint
+- [ ] Shared API client: re-export `openapi-typescript`-generated types from `packages/api` (or copy into mobile); same `apiFetch` wrapper adapted for React Native (no `fetch` with httpOnly cookies — use `expo-secure-store` for token storage instead)
+- [ ] Onboarding carousel (MOB-O1): 3-screen first-launch only; "Skip" on screens 1–2; "Get Started" on screen 3; skipped after first completion
+- [ ] Auth screens: login (MOB-O2 — keyboard-aware layout, email + password, Google OAuth PKCE, forgot password link), register (MOB-O3 — full name, email, password, Google OAuth, terms), email verification prompt (MOB-O4 — illustration, "Check your email", resend + change email), forgot / reset password (MOB-O5)
+- [ ] Bottom tab navigator: Home / Explore / My Learning / Notifications / Profile — with unread badge on Notifications tab
+- [ ] Home / Dashboard (MOB-H1): continue learning horizontal scroll cards (1–2 active courses); upcoming session widget; announcements banner; recommended courses section; pull-to-refresh
+- [ ] Course catalog (MOB-E1): always-visible search bar; filter chips (horizontal scroll — category, level, price, language); infinite scroll course list; empty state for no results
+- [ ] Course detail (MOB-E2): hero image; tabs — Overview (description, instructor bio) / Curriculum (chapter/lesson accordion) / Reviews; sticky bottom bar with enroll / buy / continue CTA; price display; enrollment state awareness
+- [ ] My Learning (MOB-L1): tabs — In Progress (progress cards with % bar + continue CTA) / Completed (with certificate download link) / Bookmarks (lesson list)
+- [ ] Lesson player shell (MOB-LP1): full-screen presentation pushed over tab bar; top bar (back arrow, lesson title, progress dot indicator); content area; prev / next bottom bar; "Contents" button opens bottom sheet (chapter/lesson list with completion dots, lock state)
+- [ ] Video lesson (MOB-LP2): `expo-video` HLS adaptive bitrate playback; tap for playback controls overlay; double-tap left/right to seek 10s; landscape full-screen on device rotation; captions toggle; transcript bottom sheet (searchable, synced, tap to seek); notes; downloadable resources; mark complete
+- [ ] Text lesson (MOB-LP3): scrollable rich text renderer; notes; discussion section; mark complete button
+- [ ] Progress auto-save with offline queue: track progress events locally (AsyncStorage); flush to API on reconnect; no data loss on poor connectivity
+- [ ] Jest + React Native Testing Library setup; Detox setup (iOS simulator + Android emulator targets)
 
 **Screens to implement (§13 design spec):** MOB-O1 (Splash / Onboarding), MOB-O2 (Login), MOB-O3 (Register), MOB-O4 (Email Verification Prompt), MOB-O5 (Forgot / Reset Password), MOB-H1 (Home / Dashboard), MOB-E1 (Course Catalog), MOB-E2 (Course Detail), MOB-L1 (My Learning), MOB-LP1 (Lesson Player Shell), MOB-LP2 (Video Lesson), MOB-LP3 (Text Lesson)
 
-#### Mobile Client Sprint M2 (parallel with Web W3–W4)
+---
 
-- [ ] Quiz screen
+#### Mobile Client Sprint FM2 — Quizzes, AI, Social + Hardening
 
-- [ ] Assignment submission screen (text + file picker)
+> **Backend dependency:** S7–S12 (AI + real-time features). Begins once FM1 is complete and backend S7+ APIs are available.
 
-- [ ] AI assistant screen (streaming)
-
-- [ ] Notification screen; push notification registration + handling
-
-- [ ] Calendar screen; deep-link from notification to live session
-
-- [ ] Certificate screen
-
-- [ ] Detox: critical journey E2E on iOS simulator and Android emulator
+- [ ] Quiz screen (MOB-LP4): one question per screen; shrinking timer progress bar at top; swipe or tap Next / Prev; answer selection with visual confirmation; submit confirmation screen; results screen — score, per-question breakdown, AI feedback card (activates once S7 is live); retake flow
+- [ ] Assignment submission (MOB-LP5): collapsible instructions + rubric panel; rich text editor; system file picker + camera option; upload progress within the file zone; submission history below fold (all prior submissions, states A–D); AI feedback card and human feedback when graded
+- [ ] AI course assistant (MOB-LP7): floating button in lesson player → full-screen chat view; streaming response with citations; animated thinking dots; citation taps navigate to referenced lesson; back arrow returns to lesson; conversation history
+- [ ] Discussion (MOB-LP6): "View Discussion" button in lesson footer → full-screen modal; post list; compose bar pinned to bottom; keyboard-aware layout (avoids keyboard overlap); 1-level replies; upvote; flag
+- [ ] Notification screen (MOB-N1): sorted by recency; per-type icon; unread dot; pull-to-refresh; "Mark all read" in top-right action menu; push notification registration on app open (Expo Push / FCM); handle push tap → deep-link to correct screen (assignment graded → MOB-LP5, certificate issued → MOB-PR2, etc.)
+- [ ] Calendar (MOB-PR3): week view default; tap session → bottom sheet detail (title, course, join link, instructor); iCal export; deep-link from push notification to session detail
+- [ ] My Certificates (MOB-PR2): certificate cards; "Download PDF" (share sheet); copy verification link
+- [ ] Profile (MOB-PR1): avatar, display name, headline; stat row (courses enrolled, completed, certificates); nav list items (My Certificates, Calendar, Account Settings, Logout)
+- [ ] Account settings (MOB-PR4): display name, avatar (camera/library picker), bio; email change flow; password change flow; connected Google account; notification preference toggles (per-type: email + push)
+- [ ] Detox: E2E critical journey tests on iOS simulator and Android emulator — covering login, course browse, lesson completion, quiz submission, push notification deep-link
 
 **Screens to implement (§13 design spec):** MOB-LP4 (Quiz), MOB-LP5 (Assignment Submission), MOB-LP6 (Discussion — full-screen modal), MOB-LP7 (AI Course Assistant), MOB-N1 (Notifications), MOB-PR1 (Profile), MOB-PR2 (My Certificates), MOB-PR3 (Calendar), MOB-PR4 (Account Settings)
 
@@ -1717,7 +2123,7 @@ A learner enrolled in one or more courses who wants to:
 - Feel accomplished — certificates, completion milestones
 - Pick up where they left off with zero friction, on any device
 
-**Mental model:** The student thinks of xoxo like Netflix for learning — a clean, distraction-free experience where content is front and center and the UI gets out of the way.
+**Mental model:** The student thinks of XOXO like Netflix for learning — a clean, distraction-free experience where content is front and center and the UI gets out of the way.
 
 #### Admin
 
@@ -1830,57 +2236,57 @@ Splash / Onboarding (MOB-O1)
 
 #### Public Screens
 
-| ID | Screen | Purpose | Key states / notes |
-| --- | --- | --- | --- |
-| WEB-P1 | Home / Landing Page | Convert visitors to students | Hero, featured courses, value props, social proof, footer |
-| WEB-P2 | Course Catalog | Find and filter courses | Filter sidebar; search; sort; pagination or infinite scroll |
-| WEB-P3 | Course Detail | Decision to enroll | Unenrolled (enroll/buy CTA) / Enrolled ("Continue") / Completed ("View Certificate") |
-| WEB-P4 | Login | Authenticate | Email+password, Google OAuth, "Forgot password?" link, error states |
-| WEB-P5 | Register | Create account | Email+password, Google OAuth, terms acknowledgement, email verification prompt |
-| WEB-P6 | Forgot / Reset Password | Recover access | Forgot (email input + confirmation) / Reset (new password fields) |
-| WEB-P7 | Certificate Verification | Public cert verification | Valid cert details / Invalid token error — read-only, no auth required |
+| ID | Screen | Purpose |
+| --- | --- | --- |
+| WEB-P1 | Home / Landing Page | Convert visitors to students |
+| WEB-P2 | Course Catalog | Find and filter courses |
+| WEB-P3 | Course Detail | Decision to enroll |
+| WEB-P4 | Login | Authenticate |
+| WEB-P5 | Register | Create account |
+| WEB-P6 | Forgot / Reset Password | Recover access |
+| WEB-P7 | Certificate Verification | Public cert verification |
 
 #### Student Screens
 
-| ID | Screen | Purpose | Key states / notes |
-| --- | --- | --- | --- |
-| WEB-S1 | Student Dashboard | Home base; continue learning | Empty (no enrollments) / Active courses with progress + upcoming sessions widget |
-| WEB-S2 | Course Player Shell | Persistent frame for lesson content | Left sidebar (chapter/lesson nav, completion dots, lock state); top bar; prev/next nav |
-| WEB-S3 | Video Lesson | Deliver video content | HLS player; captions; transcript (searchable, synced); notes; resources; mark complete |
-| WEB-S4 | Text Lesson | Deliver written content | Rich text; notes; downloadable resources; mark complete; discussion |
-| WEB-S5 | Quiz Lesson | Test knowledge | Not started / In progress (timer, question-by-question) / Results (score, AI feedback, retake) |
-| WEB-S6 | Assignment Lesson | Capture submissions | A: not submitted / B: pending (AI generating) / C: AI feedback received / D: fully graded |
-| WEB-S7 | Code Exercise Lesson | Write and run code | Split-pane editor + output; test case pass/fail; AI explain on failure; reset to starter |
-| WEB-S8 | AI Course Assistant | Chat with course content | Slide-in panel; streaming response; citations with lesson links; conversation history |
-| WEB-S9 | Discussion Thread | Per-lesson peer discussion | Embedded at bottom of every lesson; post / reply (1-level nesting) / upvote / flag |
-| WEB-S10 | My Certificates | View and download certs | Certificate cards; download PDF; copy verification link; empty state |
-| WEB-S11 | Bookmarks | Saved lessons | Lessons grouped by course; click to jump directly to lesson |
-| WEB-S12 | Calendar | Upcoming live sessions | Month/week toggle; session detail panel; "Add to Calendar" (.ics export) |
-| WEB-S13 | Notification Center | All notifications | Sorted by recency; per-type icon; unread highlight; "Mark all as read" |
-| WEB-S14 | Profile & Account Settings | Account management | Tabs: Profile / Account / Notifications / Privacy & Data |
+| ID | Screen | Purpose |
+| --- | --- | --- |
+| WEB-S1 | Student Dashboard | Home base; continue learning |
+| WEB-S2 | Course Player Shell | Persistent frame for lesson content |
+| WEB-S3 | Video Lesson | Deliver video content |
+| WEB-S4 | Text Lesson | Deliver written content |
+| WEB-S5 | Quiz Lesson | Test knowledge |
+| WEB-S6 | Assignment Lesson | Capture submissions |
+| WEB-S7 | Code Exercise Lesson | Write and run code |
+| WEB-S8 | AI Course Assistant | Chat with course content |
+| WEB-S9 | Discussion Thread | Per-lesson peer discussion |
+| WEB-S10 | My Certificates | View and download certs |
+| WEB-S11 | Bookmarks | Saved lessons |
+| WEB-S12 | Calendar | Upcoming live sessions |
+| WEB-S13 | Notification Center | All notifications |
+| WEB-S14 | Profile & Account Settings | Account management |
 
 #### Admin Screens
 
-| ID | Screen | Purpose | Key states / notes |
-| --- | --- | --- | --- |
-| WEB-A1 | Admin Overview Dashboard | Platform pulse | KPI cards; enrollment + revenue charts; top courses table; pending queues |
-| WEB-A2 | Course List | Manage all courses | Status filter (Draft/Published/Archived); row actions: Edit / Analytics / Archive |
-| WEB-A3 | Create / Edit Course Settings | Course metadata & config | All course fields; status toggle; Save Draft / Publish / Preview actions |
-| WEB-A4 | Course Content Builder | Build chapter/lesson tree | Two-panel: left = outline with drag-and-drop; right = lesson editor |
-| WEB-A5 | Lesson Editor | Edit lesson content | Varies by type: video (upload + transcript) / text (block editor) / quiz / assignment / code |
-| WEB-A6 | Quiz Builder | Build quiz questions | Question type selector; drag reorder; per-question explanation; time limit / attempts settings |
-| WEB-A7 | Assignment Builder | Build assignment + rubric | Rich text instructions; rubric table with AI suggestion; submission type toggles |
-| WEB-A8 | Student Management (Course) | Manage enrolled students | Progress table; enroll by email; bulk CSV enroll; remove student; export |
-| WEB-A9 | Submission Grading Queue | Grade assignment submissions | Two-panel list + detail; ungraded → AI reviewed → graded states; Save Draft / Publish Grade |
-| WEB-A10 | Course Analytics | Course engagement data | Drop-off funnel; video watch heatmap; quiz stats per question; student progress histogram |
-| WEB-A11 | Batch / Cohort Management | Manage cohorts | Tabs: Roster / Timetable / Live Sessions / Announcements |
-| WEB-A12 | Announcements | Send communications | Compose with rich text; audience selector; schedule send; delivery stats |
-| WEB-A13 | AI Configuration | Per-course AI settings | Feature toggles; tone (encouraging/neutral/academic); system prompt override; token budget + log |
-| WEB-A14 | Payment & Billing | Revenue and coupons | Tabs: Transactions (refund action) / Revenue (charts) / Coupons (create + manage) |
-| WEB-A15 | Platform Settings | Global configuration | Sections: General / Authentication / Email / Integrations (Mux, Stripe, Zoom) |
-| WEB-A16 | Moderation Queue | Review flagged content | Table of flagged posts; View in Context / Dismiss Flag / Delete Post actions |
-| WEB-A17 | Certificate Request Queue | Manual cert approval | Table; Approve & Issue / Reject (with required reason) per row |
-| WEB-A18 | Student Detail (Admin) | Student profile view | Enrollments; quiz history; assignment submissions; badges; role management; remove from platform |
+| ID | Screen | Purpose |
+| --- | --- | --- |
+| WEB-A1 | Admin Overview Dashboard | Platform pulse |
+| WEB-A2 | Course List | Manage all courses |
+| WEB-A3 | Create / Edit Course Settings | Course metadata & config |
+| WEB-A4 | Course Content Builder | Build chapter/lesson tree |
+| WEB-A5 | Lesson Editor | Edit lesson content |
+| WEB-A6 | Quiz Builder | Build quiz questions |
+| WEB-A7 | Assignment Builder | Build assignment + rubric |
+| WEB-A8 | Student Management (Course) | Manage enrolled students |
+| WEB-A9 | Submission Grading Queue | Grade assignment submissions |
+| WEB-A10 | Course Analytics | Course engagement data |
+| WEB-A11 | Batch / Cohort Management | Manage cohorts |
+| WEB-A12 | Announcements | Send communications |
+| WEB-A13 | AI Configuration | Per-course AI settings |
+| WEB-A14 | Payment & Billing | Revenue and coupons |
+| WEB-A15 | Platform Settings | Global configuration |
+| WEB-A16 | Moderation Queue | Review flagged content |
+| WEB-A17 | Certificate Request Queue | Manual cert approval |
+| WEB-A18 | Student Detail (Admin) | Student profile view |
 
 ---
 
@@ -1888,39 +2294,39 @@ Splash / Onboarding (MOB-O1)
 
 #### Onboarding & Auth
 
-| ID | Screen | Notes |
-| --- | --- | --- |
-| MOB-O1 | Splash / Onboarding | 3-screen carousel; first-launch only; "Skip" on screens 1–2; "Get Started" on screen 3 |
-| MOB-O2 | Login | Keyboard-aware layout; email + password; Google OAuth; forgot password link |
-| MOB-O3 | Register | Full name, email, password; Google OAuth; terms acknowledgement |
-| MOB-O4 | Email Verification Prompt | Illustration; "Check your email"; resend and change email options |
-| MOB-O5 | Forgot / Reset Password | Two-screen flow matching web equivalents |
+| ID | Screen |
+| --- | --- |
+| MOB-O1 | Splash / Onboarding |
+| MOB-O2 | Login |
+| MOB-O3 | Register |
+| MOB-O4 | Email Verification Prompt |
+| MOB-O5 | Forgot / Reset Password |
 
 #### Tab Screens
 
-| ID | Screen | Tab | Notes |
-| --- | --- | --- | --- |
-| MOB-H1 | Home / Dashboard | Home | Continue learning cards (1–2); upcoming session widget; announcements; recommended courses |
-| MOB-E1 | Course Catalog | Explore | Search bar always visible; filter chips (horizontal scroll); infinite scroll course list |
-| MOB-E2 | Course Detail | Explore | Tabs: Overview / Curriculum / Reviews; sticky bottom bar with enroll/buy/continue CTA |
-| MOB-L1 | My Learning | My Learning | Tabs: In Progress / Completed / Bookmarks |
-| MOB-N1 | Notifications | Notifications | Sorted by recency; unread dot; pull-to-refresh; "Mark all read" in top-right menu |
-| MOB-PR1 | Profile | Profile | Avatar, display name, headline; stat row; nav list (certificates, calendar, settings, logout) |
-| MOB-PR2 | My Certificates | Profile | Certificate cards; download PDF; share / copy verification link |
-| MOB-PR3 | Calendar | Profile | Week view default; tap session → detail sheet with join link; iCal export |
-| MOB-PR4 | Account Settings | Profile | Display name, avatar, bio; email/password change; connected accounts; notification toggles |
+| ID | Screen | Tab |
+| --- | --- | --- |
+| MOB-H1 | Home / Dashboard | Home |
+| MOB-E1 | Course Catalog | Explore |
+| MOB-E2 | Course Detail | Explore |
+| MOB-L1 | My Learning | My Learning |
+| MOB-N1 | Notifications | Notifications |
+| MOB-PR1 | Profile | Profile |
+| MOB-PR2 | My Certificates | Profile |
+| MOB-PR3 | Calendar | Profile |
+| MOB-PR4 | Account Settings | Profile |
 
 #### Lesson Player Screens (full-screen, pushed from any tab)
 
-| ID | Screen | Notes |
-| --- | --- | --- |
-| MOB-LP1 | Lesson Player Shell | Top bar (back, title, progress); content area; prev/next bottom bar; "Contents" opens bottom sheet |
-| MOB-LP2 | Video Lesson | 16:9 player; tap for controls; double-tap seek; landscape full-screen; transcript; notes; resources; discussion |
-| MOB-LP3 | Text Lesson | Scrollable rich text; notes; discussion section; mark complete button |
-| MOB-LP4 | Quiz | One question per screen; shrinking timer bar; swipe or tap Next/Prev; results screen scrollable |
-| MOB-LP5 | Assignment Submission | Collapsible instructions + rubric; text editor; system file picker / camera; submission history below |
-| MOB-LP6 | Discussion | "View Discussion" opens full-screen modal; compose pinned to bottom; keyboard-aware |
-| MOB-LP7 | AI Course Assistant | Floating button → full-screen chat; streaming response with citations; back to lesson |
+| ID | Screen |
+| --- | --- |
+| MOB-LP1 | Lesson Player Shell |
+| MOB-LP2 | Video Lesson |
+| MOB-LP3 | Text Lesson |
+| MOB-LP4 | Quiz |
+| MOB-LP5 | Assignment Submission |
+| MOB-LP6 | Discussion |
+| MOB-LP7 | AI Course Assistant |
 
 ---
 
@@ -2008,81 +2414,23 @@ Push notification: "Your assignment has been graded"
 
 ---
 
-### 13.8 Interaction & UX Patterns
+### 13.8 Component Registry
 
-Consistent patterns used across multiple screens. Implement these as reusable components.
+> Shared UI patterns discovered during implementation. Updated as components are built in FW1-A and beyond.
 
-#### Progress Indicators
+All components live in `src/components/common/` and are barrel-exported from `src/components/common/index.ts`.
 
-- **Lesson completion dot:** empty circle (not started), half-filled (in progress), filled checkmark (complete)
-- **Course progress bar:** always displays percentage numerically alongside the bar — never a bar with no number
-- **Chapter completion:** fraction in sidebar ("3/5 lessons") + mini progress bar per chapter header
-- **Video scrub bar:** secondary colored marker shows the student's previous watch position on load
-
-#### Loading & Skeleton States
-
-- All async content (AI feedback, submissions, course lists) shows a skeleton loader — never a spinner over blank space
-- AI responses stream word-by-word (typewriter effect); while awaiting first token, show three animated dots ("thinking")
-- Video upload shows stepped progress: Uploading (nn%) → Processing → Generating Transcript → Ready
-
-#### Empty States
-
-Every list or content area that can be empty needs a designed empty state: icon or illustration + friendly message + CTA where applicable.
-
-| Context | Message | CTA |
-| --- | --- | --- |
-| No enrolled courses | "You haven't enrolled in any courses yet." | Browse Courses |
-| No notifications | "You're all caught up." | — |
-| No ungraded submissions | "No ungraded submissions. Nice work." | — |
-| No bookmarks | "Bookmark lessons you want to revisit." | — |
-| No certificates | "Complete a course to earn your first certificate." | Browse Courses |
-
-#### Modals and Confirmation Dialogs
-
-- Destructive actions (delete, remove student, revoke access, refund) require a confirmation modal: description + "Cancel" + red-colored confirm button
-- Non-destructive actions (enroll student, apply coupon, export) complete immediately — no confirmation required
-
-#### Toast Notifications
-
-Short-lived messages at the top (web) or bottom (mobile) of the screen. Auto-dismiss after 4 seconds or on tap/click.
-
-| Type | Color | Example |
-| --- | --- | --- |
-| Success | Green | "Course published successfully." |
-| Error | Red | "Upload failed. Please try again." |
-| Info | Neutral | "AI feedback is being generated. We'll notify you when it's ready." |
-
-#### The AI Feedback Card
-
-Used in WEB-S5 (quiz results), WEB-S6 (assignment), and WEB-A9 (grading queue).
-
-- Visually distinct from human feedback: "AI Feedback" label with sparkle icon
-- Slightly different background or border treatment vs human-authored content
-- Per-criterion breakdown as a list — not a wall of text
-- Tone is always constructive — never punitive
-
-#### Locked Lessons
-
-When a course enforces sequential order and a lesson is not yet unlocked:
-
-- Padlock icon in the sidebar
-- Visually desaturated / dimmed
-- On click: tooltip — "Complete [previous lesson name] to unlock this."
-- Never renders as a 404 or generic error page
-
-#### Real-Time Updates (no page refresh)
-
-- Unread notification badge in nav updates live (WebSocket / SSE)
-- Assignment "feedback pending" state updates to "feedback ready" when the background Celery job completes
-- Lesson completion updates the course sidebar immediately on mark-complete
-
-#### File Upload Zones
-
-- Drag-and-drop with visual feedback (border highlight on drag-over)
-- Shows accepted file types and max size below the zone
-- After upload: file name + size + type icon + remove button
-- Uploading state: progress bar within the zone
-- Error state: red border + error message + "Try again" option
+| Component | File | Props | Notes |
+|---|---|---|---|
+| `<SkeletonCard />` | `SkeletonCard.tsx` | `className?` | Full card placeholder: image area + title + subtitle line |
+| `<SkeletonText />` | `SkeletonCard.tsx` | `lines?` (default 3), `className?` | N text-line placeholders; last line 60% width |
+| `<AppToaster />` | `Toast.tsx` | — | Mount once in `App.tsx`; Sonner `<Toaster>` with `top-center`, 4 s duration |
+| `toast.success/error/info()` | `Toast.tsx` | `message: string` | Typed helpers wrapping Sonner's `toast()` |
+| `<ConfirmModal />` | `ConfirmModal.tsx` | `open`, `onOpenChange`, `title`, `description`, `confirmLabel?`, `onConfirm` | Destructive confirm only — red button; non-destructive actions need no modal |
+| `<EmptyState />` | `EmptyState.tsx` | `icon?`, `message`, `cta?`, `className?` | `cta` is `{ label: string; onClick: () => void }` |
+| `<LessonDot />` | `LessonDot.tsx` | `state: 'not-started' \| 'in-progress' \| 'complete'`, `className?` | In-progress: SVG left-half amber fill |
+| `<CourseProgressBar />` | `CourseProgressBar.tsx` | `percent`, `className?` | Clamps 0–100; always shows numeral; ARIA `role="progressbar"` |
+| `<FileUploadZone />` | `FileUploadZone.tsx` | `accept?`, `maxSizeMB?`, `onFilesSelected`, `uploading?`, `progress?`, `uploadedFile?`, `onRemove?`, `error?`, `className?` | Native HTML5 drag-and-drop; 4 visual states: idle / drag-over / uploading / uploaded |
 
 ---
 
@@ -2091,16 +2439,15 @@ When a course enforces sequential order and a lesson is not yet unlocked:
 > Derived from the existing xoxoeducation.com site. CSS custom properties extracted directly from the production stylesheet.
 
 ```
-Primary color:        #F5A623  — warm amber    (hsl 38 92% 56%)
-Secondary color:      #355E87  — mid navy      (hsl 210 44% 37%)
-Accent / CTA color:   #F0621D  — burnt orange  (hsl 20 89% 53%)
-Dark surface:         #2C4A5C  — deep navy     (hsl 204 32% 26%)
-Background (light):   #FFFFFF  — white
-Background (dark):    #0F1C24  — dark navy
-Text / Neutral scale: #333333 (primary) · #666666 (muted) · #999999 (placeholder) · #FAFAFA (on-dark)
-Border color:         #E5E7EB
+Primary color:        #F5A623  — warm amber    oklch(0.75 0.16 70)
+Secondary color:      #355E87  — mid navy      oklch(0.42 0.08 240)
+Accent / CTA color:   #F0621D  — burnt orange  oklch(0.62 0.19 42)
+Dark surface:         #2C4A5C  — deep navy     oklch(0.33 0.06 237)
+Background:           #FFFFFF  — white         oklch(1 0 0)
+Text / Neutral scale: #333333 (primary) · #666666 (muted) · #999999 (placeholder)
+Border color:         #E5E7EB                  oklch(0.92 0.01 247)
 
-Primary typeface:     Inter (Google Fonts / next/font) — all weights
+Primary typeface:     Inter (Google Fonts via @fontsource/inter) — all weights
 Secondary typeface:   Inter (same family; weight and size variation handles hierarchy)
 Heading scale:        4xl (2.25rem) / 3xl (1.875rem) / 2xl (1.5rem) / xl (1.25rem) — font-weight 700
 Body size:            16px base; 18px for long-form lesson content (text lessons, transcripts)
@@ -2145,31 +2492,6 @@ What to avoid:        Purple gradients, generic SaaS blue, cold tech aesthetics,
 - `375px` — mobile
 - `768px` — tablet (filter sidebars collapse to drawers; course player sidebar becomes slide-in)
 - `1280px` — desktop
-
-### 13.10 Design System Implementation
-
-The web client implements the brand via a layered token system:
-
-```
-CSS custom properties (globals.css)
-  → Tailwind utilities (tailwind.config.ts)
-    → UI components (src/components/ui/)
-      → Pages
-```
-
-**Token naming:**
-
-| Layer | Example |
-| --- | --- |
-| CSS variable | `--brand-primary: #F5A623` |
-| Tailwind utility | `bg-brand-primary`, `text-content-secondary` |
-| Dark mode | `.dark {}` block in `globals.css` swaps surface/content tokens; brand colors unchanged |
-
-**UI component library:** Built from scratch using `class-variance-authority` (variants), `@radix-ui/react-slot` (`asChild` pattern), and `tailwind-merge` (`cn()` helper). Components live in `src/components/ui/` and mirror the shadcn/ui API.
-
-> **Why not shadcn CLI?** `shadcn@latest` (v4+) requires Tailwind v4 and uses OKLCH color space + `@base-ui/react` — incompatible with this project's Tailwind v3. Do **not** run `npx shadcn@latest add` or `npx shadcn@latest init`. Add new components manually following the existing pattern in `src/components/ui/`.
-
-**Logo files:** `public/logo/logo-1.png` (252×356, portrait) · `public/logo/logo-2.png` (481×220, landscape). Use `<Logo />` from `src/components/layout/Logo.tsx`. Always pass `height` — width is computed automatically from the intrinsic aspect ratio.
 
 ### Running tests
 
@@ -2766,7 +3088,7 @@ A feature is done when **all** of the following are true:
 
 | Subdomain | Points to | Cloudflare proxy | Purpose |
 | --- | --- | --- | --- |
-| `xoxoeducation.com` | Vercel | Orange-cloud (Full strict SSL) or grey-cloud | Next.js web app |
+| `xoxoeducation.com` | Vercel | Orange-cloud (Full strict SSL) or grey-cloud | React + Vite SPA |
 | `www.xoxoeducation.com` | Redirect to apex | — | Handled by Vercel redirect rule |
 | `api.xoxoeducation.com` | Railway / Render backend | **Orange-cloud** | FastAPI — Cloudflare absorbs DDoS before it reaches the origin |
 
@@ -2776,14 +3098,21 @@ A feature is done when **all** of the following are true:
 
 ### 14.2 Web App — Vercel
 
-**Why Vercel:** The canonical host for Next.js 14 App Router. SSR, ISR, edge middleware (used for auth redirects), and preview deployments are all first-class features — no adapter or configuration required.
+**Why Vercel:** Excellent static SPA hosting with a zero-config Vite build detection, global CDN, and automatic preview deployments on every PR branch. Since the web client is a pure React + Vite SPA (no SSR), Vercel simply builds and serves the static output — no server infrastructure required. Auth redirects are handled client-side via React Router protected route wrappers, not edge middleware.
 
 **Vercel project setup:**
 
 1. Import the GitHub repository into Vercel; set the root directory to `web-client/`.
-2. Framework preset: **Next.js** (auto-detected).
+2. Framework preset: **Vite** (auto-detected).
 3. Add the custom domain `xoxoeducation.com` in Vercel → Project → Domains.
 4. Vercel provides the DNS record values (A + CNAME) — add these in Cloudflare.
+5. Add a `vercel.json` rewrite rule so all routes resolve to `index.html` (required for client-side routing):
+
+```json
+{
+  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+}
+```
 
 **Deployment branches:**
 
@@ -2799,14 +3128,14 @@ PR preview deployments let the designer review every screen against the design s
 
 | Variable | Production value | Preview / Staging value |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `https://api.xoxoeducation.com` | Staging API URL |
-| `NEXT_PUBLIC_STRIPE_KEY` | Stripe live publishable key | Stripe test publishable key |
-| `NEXT_PUBLIC_POSTHOG_KEY` | Production analytics key | Test / dev key |
-| `NEXT_PUBLIC_MUX_ENV_KEY` | Mux production data key | Mux dev data key |
+| `VITE_API_URL` | `https://api.xoxoeducation.com` | Staging API URL |
+| `VITE_STRIPE_KEY` | Stripe live publishable key | Stripe test publishable key |
+| `VITE_POSTHOG_KEY` | Production analytics key | Test / dev key |
+| `VITE_MUX_ENV_KEY` | Mux production data key | Mux dev data key |
 
-Sensitive server-side variables (no `NEXT_PUBLIC_` prefix) are not exposed to the browser.
+> Only variables prefixed with `VITE_` are bundled into the client build. Do not put secrets in these variables — they are visible in the browser. All secrets live in the backend environment only.
 
-**CI/CD:** GitHub Actions runs lint, type check, and tests on every PR. On merge to `main`, Vercel deploys automatically via its GitHub integration — no separate deploy step needed in Actions.
+**CI/CD:** GitHub Actions runs lint, type check, and Vitest unit tests on every PR. On merge to `main`, Vercel deploys automatically via its GitHub integration — no separate deploy step needed in Actions. Playwright E2E tests run against the PR preview URL in CI.
 
 ---
 

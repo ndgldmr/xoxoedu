@@ -34,6 +34,26 @@ async def get_submission(
     return ok(submission.model_dump())
 
 
+@router.get("/by-lesson/{lesson_id}")
+async def get_quiz_by_lesson(
+    lesson_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=require_role(Role.STUDENT),
+) -> dict:
+    """Retrieve the quiz for a lesson by lesson_id (correct answers masked).
+
+    Args:
+        lesson_id: UUID of the lesson whose quiz is requested.
+        db: Injected async database session.
+        current_user: Authenticated student from the JWT.
+
+    Returns:
+        The ``QuizOut`` wrapped in the standard response envelope.
+    """
+    quiz = await service.get_quiz_by_lesson(db, lesson_id)
+    return ok(quiz.model_dump())
+
+
 @router.get("/{quiz_id}")
 async def get_quiz(
     quiz_id: uuid.UUID,

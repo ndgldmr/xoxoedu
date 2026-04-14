@@ -14,6 +14,26 @@ from app.modules.assignments.schemas import UploadRequestIn
 router = APIRouter(prefix="/assignments", tags=["assignments"])
 
 
+@router.get("/by-lesson/{lesson_id}")
+async def get_assignment_by_lesson(
+    lesson_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user=require_role(Role.STUDENT),
+) -> dict:
+    """Retrieve the assignment for a lesson by lesson_id.
+
+    Args:
+        lesson_id: UUID of the lesson whose assignment is requested.
+        db: Injected async database session.
+        current_user: Authenticated student from the JWT.
+
+    Returns:
+        The ``AssignmentOut`` wrapped in the standard response envelope.
+    """
+    assignment = await service.get_assignment_by_lesson(db, lesson_id)
+    return ok(assignment.model_dump())
+
+
 @router.get("/{assignment_id}")
 async def get_assignment(
     assignment_id: uuid.UUID,

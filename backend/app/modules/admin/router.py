@@ -5,6 +5,7 @@ import uuid
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.core.rbac import Role, require_role
 from app.core.responses import ok
 from app.db.models.user import User
@@ -203,6 +204,51 @@ async def reorder_lessons(
     """Reorder a chapter's lessons by supplying the complete ordered list of lesson IDs."""
     lessons = await course_service.reorder_lessons(db, chapter_id, body.ids)
     return ok([LessonOut.model_validate(lesson).model_dump() for lesson in lessons])
+
+
+# ── Video upload ───────────────────────────────────────────────────────────────
+
+@router.post("/lessons/{lesson_id}/video", status_code=201)
+async def request_video_upload(
+    lesson_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Create a Mux direct upload for a video lesson.
+
+    Returns a presigned upload URL the client should PUT the video file to
+    directly.  The Mux upload ID is persisted on the lesson row so the webhook
+    handler can correlate the ``video.upload.asset_created`` event back to this
+    lesson and swap in the real asset ID.
+
+    Args:
+        lesson_id: UUID of the lesson to attach the video to.
+        db: Async database session.
+
+    Returns:
+        ``VideoUploadResponseOut`` with ``upload_url`` and ``asset_id``.
+
+    Raises:
+        LessonNotFound: When no lesson with ``lesson_id`` exists.
+    """
+    from sqlalchemy import select
+
+    from app.core.exceptions import LessonNotFound
+    from app.core.mux import create_upload
+    from app.db.models.course import Lesson
+    from app.modules.video.schemas import VideoUploadResponseOut
+
+    result = await db.execute(select(Lesson).where(Lesson.id == lesson_id))
+    lesson = result.scalar_one_or_none()
+    if lesson is None:
+        raise LessonNotFound()
+
+    upload_url, asset_id = create_upload(
+        cors_origin=settings.FRONTEND_URL,
+    )
+    lesson.video_asset_id = asset_id
+    await db.commit()
+
+    return ok(VideoUploadResponseOut(upload_url=upload_url, asset_id=asset_id).model_dump())
 
 
 # ── Resources ──────────────────────────────────────────────────────────────────

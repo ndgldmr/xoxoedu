@@ -115,6 +115,22 @@ class QuizOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── AI feedback schemas ────────────────────────────────────────────────────────
+
+class QuizFeedbackOut(BaseModel):
+    """AI-generated feedback for a single question in a submission.
+
+    Attributes:
+        question_id: The question this feedback addresses.
+        feedback_text: LLM-generated explanation; empty string when unavailable.
+    """
+
+    question_id: uuid.UUID
+    feedback_text: str
+
+    model_config = {"from_attributes": True}
+
+
 # ── Submission schemas ─────────────────────────────────────────────────────────
 
 class SubmitQuizIn(BaseModel):
@@ -139,6 +155,8 @@ class QuizSubmissionOut(BaseModel):
         passed: ``True`` when ``score == max_score``.
         submitted_at: Server timestamp of the submission.
         questions: Questions with correct answers revealed when attempts exhausted.
+        ai_feedback: Per-question AI feedback; empty list until the async task
+            completes or when AI is disabled for the course.
     """
 
     id: uuid.UUID
@@ -149,6 +167,7 @@ class QuizSubmissionOut(BaseModel):
     passed: bool
     submitted_at: datetime
     questions: list[QuizQuestionOut]
+    ai_feedback: list[QuizFeedbackOut] = Field(default_factory=list)
 
     model_config = {"from_attributes": True}
 

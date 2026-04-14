@@ -17,6 +17,7 @@ from app.modules.enrollments.schemas import (
     LessonProgressIn,
     LessonProgressOut,
     NoteIn,
+    NoteListItem,
     NoteOut,
 )
 
@@ -104,6 +105,21 @@ async def get_continue_learning(
 
 
 # ── Notes ──────────────────────────────────────────────────────────────────────
+
+@router.get("/users/me/notes")
+async def list_notes(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = require_role(Role.STUDENT),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List all of the authenticated student's notes with lesson and course context."""
+    notes, total = await service.list_notes(db, current_user.id, skip, limit)
+    return ok(
+        [NoteListItem.model_validate(n).model_dump() for n in notes],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
 
 @router.post("/lessons/{lesson_id}/notes", status_code=200)
 async def upsert_note(

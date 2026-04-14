@@ -113,6 +113,7 @@ class QuizSubmission(Base, UUIDMixin):
         submitted_at: Server timestamp recorded when the row is inserted.
         user: The submitting ``User``.
         quiz: The ``Quiz`` that was attempted.
+        ai_feedback: AI-generated per-question feedback; populated asynchronously.
     """
 
     __tablename__ = "quiz_submissions"
@@ -137,3 +138,47 @@ class QuizSubmission(Base, UUIDMixin):
 
     user: Mapped[User] = relationship("User", foreign_keys=[user_id])
     quiz: Mapped[Quiz] = relationship("Quiz", foreign_keys=[quiz_id])
+    ai_feedback: Mapped[list[QuizFeedback]] = relationship(
+        "QuizFeedback",
+        back_populates="submission",
+        cascade="all, delete-orphan",
+    )
+
+
+class QuizFeedback(Base, UUIDMixin):
+    """AI-generated feedback for one question within a quiz submission.
+
+    Rows are written asynchronously by the ``generate_quiz_feedback`` Celery
+    task after the submission is committed.  The unique constraint on
+    ``(submission_id, question_id)`` makes task retries idempotent.
+
+    Attributes:
+        submission_id: FK to the parent ``QuizSubmission``; cascades on delete.
+        question_id: FK to the ``QuizQuestion`` this feedback addresses.
+        feedback_text: LLM-generated explanatory feedback; empty string when the
+            LLM call failed gracefully.
+        created_at: Server timestamp set on INSERT.
+        submission: Back-reference to the parent ``QuizSubmission``.
+    """
+
+    __tablename__ = "quiz_feedback"
+    __table_args__ = (
+        UniqueConstraint("submission_id", "question_id", name="uq_quiz_feedback_sub_q"),
+    )
+
+    submission_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("quiz_submissions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    question_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("quiz_questions.id", ondelete="CASCADE"), nullable=False
+    )
+    feedback_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    submission: Mapped[QuizSubmission] = relationship(
+        "QuizSubmission", back_populates="ai_feedback"
+    )

@@ -74,6 +74,19 @@ class Settings(BaseSettings):
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
 
+    # AI / LLM
+    GEMINI_API_KEY: str = ""
+    AI_MODEL: str = "gemini/gemini-2.0-flash"
+    AI_MONTHLY_TOKEN_BUDGET: int = 100_000
+
+    # Mux (video hosting)
+    MUX_TOKEN_ID: str = ""
+    MUX_TOKEN_SECRET: str = ""
+    MUX_WEBHOOK_SECRET: str = ""
+
+    # OpenAI (Whisper transcription)
+    OPENAI_API_KEY: str = ""
+
     # App
     FRONTEND_URL: str = "http://localhost:3000"
     ENVIRONMENT: str = "development"

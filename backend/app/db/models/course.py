@@ -168,6 +168,7 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
     type: Mapped[str] = mapped_column(String(30), nullable=False)
     content: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     video_asset_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mux_playback_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_free_preview: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_locked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -175,6 +176,9 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
     chapter: Mapped[Chapter] = relationship("Chapter", back_populates="lessons")
     resources: Mapped[list[LessonResource]] = relationship(
         "LessonResource", back_populates="lesson"
+    )
+    transcript: Mapped[LessonTranscript | None] = relationship(
+        "LessonTranscript", back_populates="lesson", uselist=False
     )
 
 
@@ -205,3 +209,39 @@ class LessonResource(Base, UUIDMixin):
     )
 
     lesson: Mapped[Lesson] = relationship("Lesson", back_populates="resources")
+
+
+class LessonTranscript(Base, UUIDMixin):
+    """Auto-generated (and admin-editable) transcript for a video lesson.
+
+    Created by the ``generate_transcript`` Celery task after Mux signals that
+    a video is ready.  One row per lesson (enforced by the unique constraint on
+    ``lesson_id``).
+
+    Attributes:
+        lesson_id: FK to the parent ``lessons.id``; cascades on delete.
+        vtt_key: R2 object key for the WebVTT caption file.
+        plain_text: Full transcript as plain text; used for RAG indexing in Sprint 8B.
+        created_at: Row creation timestamp.
+        updated_at: Last-edited timestamp; set on admin PATCH.
+        lesson: Back-reference to the parent ``Lesson``.
+    """
+
+    __tablename__ = "lesson_transcripts"
+
+    lesson_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("lessons.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+        unique=True,
+    )
+    vtt_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    plain_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()", nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default="now()", nullable=False
+    )
+
+    lesson: Mapped[Lesson] = relationship("Lesson", back_populates="transcript")

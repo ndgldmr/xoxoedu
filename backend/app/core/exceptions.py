@@ -387,6 +387,22 @@ class SubmissionAlreadyGraded(AppException):
     message = "A grade has already been published for this submission"
 
 
+class AIUnavailable(AppException):
+    """Raised when the LLM provider is unreachable or the circuit breaker is open."""
+
+    status_code = 503
+    error_code = "AI_UNAVAILABLE"
+    message = "AI service is temporarily unavailable"
+
+
+class AIQuotaExceeded(AppException):
+    """Raised when a user has exhausted their monthly AI request quota."""
+
+    status_code = 429
+    error_code = "AI_QUOTA_EXCEEDED"
+    message = "Monthly AI request quota exceeded"
+
+
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:
     """Convert an ``AppException`` into a JSON error envelope response.
 

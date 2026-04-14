@@ -196,6 +196,26 @@ class NoteOut(BaseModel):
     updated_at: datetime
 
 
+class NoteListItem(BaseModel):
+    """A user note with its lesson and course context for the global notes list.
+
+    Attributes:
+        id: Note primary key.
+        lesson_id: FK to the lesson.
+        content: Note body text.
+        updated_at: When the note was last modified.
+        lesson: Lesson snapshot including its parent chapter and course.
+    """
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    lesson_id: uuid.UUID
+    content: str
+    updated_at: datetime
+    lesson: LessonWithChapterRef
+
+
 # ── Bookmarks ──────────────────────────────────────────────────────────────────
 
 class BookmarkToggleOut(BaseModel):

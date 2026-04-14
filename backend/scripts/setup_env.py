@@ -233,6 +233,22 @@ def main() -> None:
         "STRIPE_WEBHOOK_SECRET", existing.get("STRIPE_WEBHOOK_SECRET", ""), secret=True
     )
 
+    # ── AI / LLM ───────────────────────────────────────────────────────────────
+    print("\n--- AI / LLM (Google AI / Gemini) ---")
+    print("  Get your API key from aistudio.google.com/apikey")
+    print("  LiteLLM reads GEMINI_API_KEY automatically for gemini/ models")
+    google_ai_api_key = _prompt(
+        "GEMINI_API_KEY", existing.get("GEMINI_API_KEY", ""), secret=True
+    )
+    ai_model = _prompt(
+        "AI_MODEL (litellm model identifier)",
+        existing.get("AI_MODEL", "gemini/gemini-2.0-flash"),
+    )
+    ai_monthly_token_budget = _prompt(
+        "AI_MONTHLY_TOKEN_BUDGET (default per-user monthly token cap)",
+        existing.get("AI_MONTHLY_TOKEN_BUDGET", "100000"),
+    )
+
     # ── App ────────────────────────────────────────────────────────────────────
     print("\n--- App ---")
     frontend_url = _prompt(
@@ -289,6 +305,13 @@ R2_PUBLIC_URL={r2_public_url}
 STRIPE_SECRET_KEY={stripe_secret_key}
 STRIPE_PUBLISHABLE_KEY={stripe_publishable_key}
 STRIPE_WEBHOOK_SECRET={stripe_webhook_secret}
+
+# AI / LLM (Sprint 7)
+# Get your API key from aistudio.google.com/apikey
+# LiteLLM reads this automatically when using the gemini/ model prefix
+GEMINI_API_KEY={google_ai_api_key}
+AI_MODEL={ai_model}
+AI_MONTHLY_TOKEN_BUDGET={ai_monthly_token_budget}
 
 # App
 FRONTEND_URL={frontend_url}

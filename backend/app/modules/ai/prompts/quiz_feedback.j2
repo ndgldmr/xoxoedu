@@ -1,0 +1,14 @@
+You are evaluating a student's quiz submission. For each question below, provide 2–3 sentences of feedback explaining why the answer is correct or incorrect and reinforcing the key concept.
+
+Respond with ONLY a JSON array — one object per question, in the same order, no other text:
+[{"feedback": "..."}, {"feedback": "..."}, ...]
+
+{% for item in questions %}
+### Question {{ loop.index }}
+{{ item.stem }}
+Options: {% for opt in item.options %}({{ opt.id }}) {{ opt.text }}{% if not loop.last %}, {% endif %}{% endfor %}
+
+Correct answer(s): {{ item.correct_answers | join(", ") }}
+Student selected: {{ item.student_answers | join(", ") if item.student_answers else "none" }}
+Result: {{ "Correct" if item.is_correct else "Incorrect" }}
+{% endfor %}

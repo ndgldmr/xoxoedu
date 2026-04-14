@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import MaxAttemptsExceeded, QuizNotFound, QuizSubmissionNotFound
+from app.db.models.ai import AIUsageBudget
+from app.db.models.course import Chapter, Lesson
 from app.db.models.quiz import Quiz, QuizQuestion, QuizSubmission
 from app.modules.quizzes.schemas import (
     OptionItem,
+    QuizFeedbackOut,
     QuizIn,
     QuizOut,
     QuizQuestionOut,
@@ -181,6 +184,38 @@ async def create_quiz(db: AsyncSession, data: QuizIn) -> QuizOut:
     )
 
 
+async def get_quiz_by_lesson(db: AsyncSession, lesson_id: uuid.UUID) -> QuizOut:
+    """Return the quiz attached to a lesson (answers masked).
+
+    Args:
+        db: Active async database session.
+        lesson_id: UUID of the lesson whose quiz is requested.
+
+    Returns:
+        A ``QuizOut`` with questions and correct answers masked.
+
+    Raises:
+        QuizNotFound: When no quiz exists for ``lesson_id``.
+    """
+    result = await db.execute(
+        select(Quiz)
+        .where(Quiz.lesson_id == lesson_id)
+        .options(selectinload(Quiz.questions))
+    )
+    quiz = result.scalar_one_or_none()
+    if quiz is None:
+        raise QuizNotFound()
+    return QuizOut(
+        id=quiz.id,
+        lesson_id=quiz.lesson_id,
+        title=quiz.title,
+        description=quiz.description,
+        max_attempts=quiz.max_attempts,
+        time_limit_minutes=quiz.time_limit_minutes,
+        questions=[_build_question_out(q, reveal=False) for q in quiz.questions],
+    )
+
+
 async def get_quiz(db: AsyncSession, quiz_id: uuid.UUID, *, reveal: bool = False) -> QuizOut:
     """Return a quiz, optionally with correct answers revealed.
 
@@ -269,6 +304,22 @@ async def submit_quiz(
 
     await db.refresh(submission)
 
+    # Enqueue AI feedback if the course has AI enabled
+    course_id = await db.scalar(
+        select(Chapter.course_id)
+        .join(Lesson, Lesson.chapter_id == Chapter.id)
+        .join(Quiz, Quiz.lesson_id == Lesson.id)
+        .where(Quiz.id == quiz_id)
+    )
+    if course_id is not None:
+        ai_config = await db.scalar(
+            select(AIUsageBudget).where(AIUsageBudget.course_id == course_id)
+        )
+        ai_enabled = ai_config.ai_enabled if ai_config is not None else True
+        if ai_enabled:
+            from app.modules.ai.tasks import generate_quiz_feedback
+            generate_quiz_feedback.delay(str(submission.id))
+
     # Reveal answers on the final attempt
     reveal = (attempts_used + 1) >= quiz.max_attempts
     return QuizSubmissionOut(
@@ -307,6 +358,7 @@ async def list_submissions(
             QuizSubmission.user_id == user_id,
             QuizSubmission.quiz_id == quiz_id,
         )
+        .options(selectinload(QuizSubmission.ai_feedback))
         .order_by(QuizSubmission.attempt_number)
     )
     submissions = result.scalars().all()
@@ -323,6 +375,7 @@ async def list_submissions(
             passed=s.passed,
             submitted_at=s.submitted_at,
             questions=[_build_question_out(q, reveal=reveal) for q in quiz.questions],
+            ai_feedback=[QuizFeedbackOut.model_validate(fb) for fb in s.ai_feedback],
         )
         for s in submissions
     ]
@@ -345,10 +398,12 @@ async def get_submission(
         QuizSubmissionNotFound: When no matching submission exists for this student.
     """
     result = await db.execute(
-        select(QuizSubmission).where(
+        select(QuizSubmission)
+        .where(
             QuizSubmission.id == submission_id,
             QuizSubmission.user_id == user_id,
         )
+        .options(selectinload(QuizSubmission.ai_feedback))
     )
     submission = result.scalar_one_or_none()
     if submission is None:
@@ -374,4 +429,5 @@ async def get_submission(
         passed=submission.passed,
         submitted_at=submission.submitted_at,
         questions=[_build_question_out(q, reveal=reveal) for q in quiz.questions],
+        ai_feedback=[QuizFeedbackOut.model_validate(fb) for fb in submission.ai_feedback],
     )

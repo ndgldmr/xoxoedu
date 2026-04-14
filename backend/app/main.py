@@ -28,6 +28,7 @@ from app.modules.media.router import router as media_router
 from app.modules.payments.router import router as payments_router
 from app.modules.quizzes.router import router as quizzes_router
 from app.modules.users.router import router as users_router
+from app.modules.video.router import router as video_router
 
 
 @asynccontextmanager
@@ -88,6 +89,7 @@ app.include_router(media_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(coupons_router, prefix="/api/v1")
 app.include_router(certificates_router, prefix="/api/v1")
+app.include_router(video_router, prefix="/api/v1")
 
 
 @app.get("/health")

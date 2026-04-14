@@ -49,6 +49,28 @@ async def _get_assignment(db: AsyncSession, assignment_id: uuid.UUID) -> Assignm
 
 # ── Public service functions ───────────────────────────────────────────────────
 
+async def get_assignment_by_lesson(db: AsyncSession, lesson_id: uuid.UUID) -> AssignmentOut:
+    """Return the assignment attached to a lesson.
+
+    Args:
+        db: Active async database session.
+        lesson_id: UUID of the lesson whose assignment is requested.
+
+    Returns:
+        An ``AssignmentOut`` for the assignment.
+
+    Raises:
+        AssignmentNotFound: When no assignment exists for ``lesson_id``.
+    """
+    result = await db.execute(
+        select(Assignment).where(Assignment.lesson_id == lesson_id)
+    )
+    assignment = result.scalar_one_or_none()
+    if assignment is None:
+        raise AssignmentNotFound()
+    return AssignmentOut.model_validate(assignment)
+
+
 async def create_assignment(db: AsyncSession, data: AssignmentIn) -> AssignmentOut:
     """Create a new assignment on a lesson.
 
