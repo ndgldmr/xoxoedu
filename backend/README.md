@@ -34,7 +34,8 @@ The backend is a Python 3.12 + FastAPI application serving all XOXO Education fu
 | Migrations | Alembic | Latest | Forward-only schema versioning |
 | Validation | Pydantic | 2.x | Request/response schemas |
 | Task queue | Celery | 5.x | Async background jobs |
-| Message broker | Redis | 7.x | Celery backend, session cache, rate limiting |
+| Message broker | RabbitMQ | 3.13 | Celery task broker (AMQP) |
+| Cache / results | Redis | 7.x | Celery result backend, session store, rate limiting |
 | Database | PostgreSQL | 16 | Primary data store |
 | Vector search | pgvector | Latest | HNSW index for RAG embeddings inside Postgres |
 | AI abstraction | LiteLLM | Latest | Unified interface to multiple LLM providers |
@@ -73,7 +74,8 @@ graph TD
 
     subgraph Data
         PG[("PostgreSQL 16\n+ pgvector")]
-        REDIS[("Redis 7")]
+        REDIS[("Redis 7\n(cache / results)")]
+        RABBIT[("RabbitMQ 3\n(broker)")]
         S3["S3 / R2"]
     end
 
@@ -98,8 +100,8 @@ graph TD
     API --> PG
     API --> REDIS
     API --> S3
-    API -->|enqueue tasks| REDIS
-    REDIS --> Workers
+    API -->|enqueue tasks| RABBIT
+    RABBIT --> Workers
     TRX --> WHISPER
     TRX --> S3
     FEED --> LLM
@@ -780,7 +782,7 @@ The OAuth2 flow uses a standard redirect-based PKCE flow. On callback, the backe
 
 ## 7. Background Jobs
 
-All async work is handled by Celery 5 with Redis as the message broker and result backend.
+All async work is handled by Celery 5 with RabbitMQ as the message broker and Redis as the result backend.
 
 ```mermaid
 graph TD
@@ -869,7 +871,7 @@ Copy `.env.example` to `.env` for local development.
 | `LITELLM_API_KEY` | Yes (AI) | API key for the configured LLM provider | — |
 | `OPENAI_API_KEY` | Yes (Whisper/embed) | OpenAI API key for Whisper + embeddings | `sk-…` |
 | `EMBEDDING_MODEL` | No | Embedding model identifier | `text-embedding-3-small` |
-| `CELERY_BROKER_URL` | No | Override Celery broker (default: `REDIS_URL`) | — |
+| `CELERY_BROKER_URL` | Yes (prod) | Celery broker URL; falls back to `REDIS_URL` in local dev | `amqp://user:pass@rabbitmq:5672//` |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins | `http://localhost:5173` |
 | `DEBUG` | No | Enable debug mode | `false` |
 
@@ -993,7 +995,7 @@ uv run alembic downgrade -1
 
 **Decision:** Async jobs (transcription, AI feedback, RAG indexing, email) use Celery rather than FastAPI's built-in `BackgroundTasks`.
 
-**Why:** FastAPI `BackgroundTasks` run in the same process as the API server. They are lost on restart, cannot be retried, cannot be distributed across workers, and block the event loop under CPU-bound load. Celery tasks are durable (Redis-backed), retryable with exponential backoff, distributable across as many workers as needed, and observable via task inspection tools.
+**Why:** FastAPI `BackgroundTasks` run in the same process as the API server. They are lost on restart, cannot be retried, cannot be distributed across workers, and block the event loop under CPU-bound load. Celery tasks are durable (RabbitMQ-brokered, Redis result-backend), retryable with exponential backoff, distributable across as many workers as needed, and observable via task inspection tools.
 
 ### RS256 (asymmetric JWT) instead of HS256
 
@@ -1668,7 +1670,7 @@ POST /progress (status=completed) → _maybe_complete_enrollment()
 
 ### Cross-Cutting Track — Async Infrastructure Hardening
 
-> Recommended before sustained AI/media usage or a move from roughly 100 users toward 10,000. Current state is a single Celery app on Redis with mixed workloads. This track isolates latency-sensitive jobs first, then moves Celery onto a dedicated broker.
+> Recommended before sustained AI/media usage or a move from roughly 100 users toward 10,000. RabbitMQ is already in use as the dedicated Celery broker; this track focuses on queue isolation, worker topology, and observability.
 
 #### Sprint A1 — Queue Isolation & Worker Topology
 
@@ -1696,18 +1698,16 @@ POST /progress (status=completed) → _maybe_complete_enrollment()
 - [ ] Failure test proves a long-running `media` task does not block `critical` email delivery
 - [ ] Load test mixed workloads with separate worker pools and record queue wait time by queue
 
-#### Sprint A2 — Dedicated Broker & Config Separation
+#### Sprint A2 — Dedicated Broker & Config Separation ✅
 
 **Goal:** Isolate Celery transport from app-side Redis usage and remove shared-broker risk.
 
 **Backend / Infra:**
-- [ ] Introduce separate `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` settings
-- [ ] Keep `REDIS_URL` for quota enforcement and cache/state only
-- [ ] Recommended path: deploy RabbitMQ as the dedicated Celery broker
-- [ ] Lower-cost fallback: keep Celery on a separate Redis instance dedicated to queue traffic
-- [ ] Update local Compose and production env vars for API plus all worker pools
-- [ ] Add broker connection retry and publish confirmation settings appropriate to the chosen broker
-- [ ] Document migration, rollback, and local boot steps in this README
+- [x] Introduce separate `CELERY_BROKER_URL` and `CELERY_RESULT_BACKEND` settings
+- [x] Keep `REDIS_URL` for quota enforcement and cache/state only
+- [x] Deploy RabbitMQ 3.13 as the dedicated Celery broker (AMQP via `amqp://`)
+- [x] Update local Compose and env vars for API plus all worker pools
+- [x] Add broker connection retry and dead-letter exchange config
 
 **Observability:**
 - [ ] Add Flower or equivalent queue dashboard in non-prod and staging

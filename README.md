@@ -40,7 +40,8 @@ graph TD
 
     subgraph Data ["Data Layer"]
         PG["PostgreSQL 16\n+ pgvector"]
-        REDIS["Redis 7\n(cache, sessions, queue)"]
+        REDIS["Redis 7\n(cache, sessions, results)"]
+        RABBIT["RabbitMQ 3\n(Celery broker)"]
         S3["S3 / Cloudflare R2\n(files, certs, VTT captions)"]
     end
 
@@ -71,14 +72,14 @@ graph TD
     AI --> REDIS
     MEDIA --> PG
     MEDIA --> S3
-    CORE -->|enqueue| REDIS
-    AI -->|enqueue| REDIS
-    MEDIA -->|enqueue| REDIS
-    REDIS --> W1
-    REDIS --> W2
-    REDIS --> W3
-    REDIS --> W4
-    REDIS --> W5
+    CORE -->|enqueue| RABBIT
+    AI -->|enqueue| RABBIT
+    MEDIA -->|enqueue| RABBIT
+    RABBIT --> W1
+    RABBIT --> W2
+    RABBIT --> W3
+    RABBIT --> W4
+    RABBIT --> W5
     W1 --> WHISPER
     W1 --> S3
     W2 --> LLM
@@ -109,7 +110,8 @@ graph TD
 | ORM | SQLAlchemy 2 (async) | Type-safe, pgvector support |
 | Migrations | Alembic | Forward-only schema versioning |
 | Task queue | Celery 5 | Async jobs: transcription, AI, email, certs |
-| Message broker | Redis 7 | Celery backend, session cache, rate limiting |
+| Message broker | RabbitMQ 3 | Celery task broker (AMQP) |
+| Cache / results | Redis 7 | Celery result backend, session store, rate limiting |
 | Validation | Pydantic 2 | Request/response schemas |
 | Auth | JWT RS256 + OAuth2 | 15 min access token, 30 day refresh cookie, Google login |
 | AI abstraction | LiteLLM | Unified interface to multiple LLM providers |
