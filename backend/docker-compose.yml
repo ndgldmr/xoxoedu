@@ -1,6 +1,6 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: xoxoedu
       POSTGRES_USER: postgres
@@ -17,6 +17,9 @@ services:
 
   redis:
     image: redis:7-alpine
+    # AOF persistence: every write is fsynced to disk so the result backend
+    # and app-side state (sessions, quota keys, dedup guards) survive restarts.
+    command: redis-server --appendonly yes
     volumes:
       - redis_data:/data
     ports:
@@ -27,12 +30,29 @@ services:
       timeout: 5s
       retries: 5
 
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: xoxoedu
+      RABBITMQ_DEFAULT_PASS: xoxoedu
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"    # AMQP — Celery broker
+      - "15672:15672"  # Management UI → http://localhost:15672
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   minio:
     image: minio/minio:latest
     command: server /data --console-address :9001
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_API_CORS_ALLOW_ORIGIN: "*"
     volumes:
       - minio_data:/data
     ports:
@@ -63,6 +83,8 @@ services:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
       DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
       R2_ENDPOINT_URL: http://minio:9000
       R2_ACCESS_KEY_ID: minioadmin
       R2_SECRET_ACCESS_KEY: minioadmin
@@ -74,17 +96,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       minio:
         condition: service_healthy
 
-  worker:
+  # ── Celery worker pools ────────────────────────────────────────────────────
+  # Each pool consumes exactly one queue so that heavy workloads (media,
+  # indexing) cannot starve latency-sensitive jobs (critical).
+  # Concurrency and time-limit flags are set per pool; shared image and env.
+
+  worker-critical:
     build: .
-    command: uv run celery -A app.worker.celery_app worker --loglevel=info
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info
+      -Q critical
+      --concurrency=4
+      --time-limit=30
+      --soft-time-limit=20
+      -n worker-critical@%h
     env_file: .env
     environment:
       DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
       DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
       REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
       R2_ENDPOINT_URL: http://minio:9000
       R2_ACCESS_KEY_ID: minioadmin
       R2_SECRET_ACCESS_KEY: minioadmin
@@ -94,10 +132,189 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       minio:
+        condition: service_healthy
+
+  worker-bulk:
+    build: .
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info
+      -Q bulk_email
+      --concurrency=4
+      --time-limit=120
+      --soft-time-limit=90
+      -n worker-bulk@%h
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-ai:
+    build: .
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info
+      -Q ai
+      --concurrency=2
+      --time-limit=180
+      --soft-time-limit=150
+      -n worker-ai@%h
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-media:
+    build: .
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info
+      -Q media
+      --concurrency=1
+      --time-limit=700
+      --soft-time-limit=600
+      -n worker-media@%h
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  worker-indexing:
+    build: .
+    command: >
+      celery -A app.worker.celery_app worker
+      --loglevel=info
+      -Q indexing
+      --concurrency=2
+      --time-limit=180
+      --soft-time-limit=150
+      -n worker-indexing@%h
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      R2_ENDPOINT_URL: http://minio:9000
+      R2_ACCESS_KEY_ID: minioadmin
+      R2_SECRET_ACCESS_KEY: minioadmin
+      R2_PUBLIC_URL: http://localhost:9000/xoxoedu-uploads
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+
+  # ── Observability ──────────────────────────────────────────────────────────
+  # Flower: Celery task dashboard. Dev/staging only — no auth by default.
+  # UI → http://localhost:5555
+  # --broker_api connects to the RabbitMQ Management HTTP API for richer
+  # queue-depth and message-rate metrics beyond what AMQP alone exposes.
+  # ── Celery beat scheduler ─────────────────────────────────────────────────────
+  # Fires periodic tasks defined in celery_app.conf.beat_schedule.
+  # The schedule file is persisted in a named volume so that beat correctly
+  # tracks last-run times across container restarts (avoiding duplicate fires
+  # for tasks that ran just before a restart).
+  worker-beat:
+    build: .
+    command: >
+      celery -A app.worker.celery_app beat
+      --loglevel=info
+      --schedule=/data/celerybeat-schedule
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/xoxoedu
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/xoxoedu
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    volumes:
+      - beat_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  flower:
+    build: .
+    command: >
+      celery -A app.worker.celery_app flower
+      --port=5555
+      --broker_api=http://xoxoedu:xoxoedu@rabbitmq:15672/api/
+    env_file: .env
+    environment:
+      CELERY_BROKER_URL: amqp://xoxoedu:xoxoedu@rabbitmq:5672//
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+    ports:
+      - "5555:5555"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
   postgres_data:
   redis_data:
+  rabbitmq_data:
   minio_data:
+  beat_data:

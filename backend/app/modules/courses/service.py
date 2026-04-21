@@ -147,6 +147,43 @@ async def create_course(
     return await get_course_by_id(db, course.id)
 
 
+async def list_all_courses(
+    db: AsyncSession,
+    status: str | None,
+    skip: int,
+    limit: int,
+) -> tuple[list[Course], int]:
+    """Return a paginated list of every course for admin, with an optional status filter.
+
+    Unlike :func:`list_courses` (which returns published-only), this function
+    returns courses in all statuses so admins can manage drafts and archived
+    courses from the web client.
+
+    Args:
+        db: Async database session.
+        status: Optional filter — ``"draft"``, ``"published"``, or ``"archived"``.
+            When ``None`` all statuses are returned.
+        skip: Number of rows to skip (offset).
+        limit: Maximum number of rows to return.
+
+    Returns:
+        A tuple of ``(courses, total)`` where ``total`` is the count of matching
+        courses before pagination is applied.
+    """
+    base = select(Course)
+    if status:
+        base = base.where(Course.status == status)
+
+    count = await db.scalar(select(func.count()).select_from(base.subquery()))
+    result = await db.execute(
+        base.options(selectinload(Course.category))
+        .order_by(Course.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    return list(result.scalars().all()), count or 0
+
+
 async def list_courses(
     db: AsyncSession,
     category_id: uuid.UUID | None,

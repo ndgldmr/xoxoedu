@@ -15,9 +15,6 @@ from app.modules.users.schemas import UserUpdateIn
 async def update_me(db: AsyncSession, user: User, body: UserUpdateIn) -> User:
     """Update profile fields for the authenticated user.
 
-    Creates a ``UserProfile`` row on the fly if one does not yet exist (e.g.
-    for OAuth-created accounts that skipped the registration form).
-
     Args:
         db: Async database session.
         user: The currently authenticated ``User`` ORM instance.
@@ -26,20 +23,8 @@ async def update_me(db: AsyncSession, user: User, body: UserUpdateIn) -> User:
     Returns:
         The refreshed ``User`` instance with updated profile data.
     """
-    if not user.profile:
-        from app.db.models.user import UserProfile
-
-        profile = UserProfile(user_id=user.id)
-        db.add(profile)
-        await db.flush()
-        await db.refresh(user)
-
-    profile = user.profile
-    if profile is None:
-        raise RuntimeError("Profile should exist after flush")
-
     for field, value in body.model_dump(exclude_none=True).items():
-        setattr(profile, field, value)
+        setattr(user, field, value)
 
     await db.commit()
     await db.refresh(user)

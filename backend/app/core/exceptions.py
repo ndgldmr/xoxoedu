@@ -48,6 +48,14 @@ class EmailAlreadyRegistered(AppException):
     message = "This email is already registered"
 
 
+class UsernameAlreadyTaken(AppException):
+    """Raised when a registration attempt uses an already-claimed username."""
+
+    status_code = 409
+    error_code = "USERNAME_ALREADY_TAKEN"
+    message = "This username is already taken"
+
+
 class InvalidCredentials(AppException):
     """Raised when email or password is incorrect during login."""
 
@@ -401,6 +409,70 @@ class AIQuotaExceeded(AppException):
     status_code = 429
     error_code = "AI_QUOTA_EXCEEDED"
     message = "Monthly AI request quota exceeded"
+
+
+class ConversationNotFound(AppException):
+    """Raised when a conversation cannot be found by ID."""
+
+    status_code = 404
+    error_code = "CONVERSATION_NOT_FOUND"
+    message = "Conversation not found"
+
+
+class AssistantRateLimited(AppException):
+    """Raised when a student exceeds the per-hour query limit on the course assistant."""
+
+    status_code = 429
+    error_code = "ASSISTANT_RATE_LIMITED"
+    message = "Rate limit exceeded: 20 assistant queries per hour per course"
+
+
+class DiscussionPostNotFound(AppException):
+    """Raised when a discussion post cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "DISCUSSION_POST_NOT_FOUND"
+    message = "Discussion post not found"
+
+
+class DiscussionPostForbidden(AppException):
+    """Raised when a user attempts an operation they are not authorised to perform on a post."""
+
+    status_code = 403
+    error_code = "DISCUSSION_POST_FORBIDDEN"
+    message = "You do not have permission to perform this action on this post"
+
+
+class CannotVoteOnOwnPost(AppException):
+    """Raised when a user attempts to upvote their own discussion post."""
+
+    status_code = 403
+    error_code = "CANNOT_VOTE_ON_OWN_POST"
+    message = "You cannot upvote your own post"
+
+
+class CannotFlagOwnPost(AppException):
+    """Raised when a user attempts to flag their own discussion post."""
+
+    status_code = 403
+    error_code = "CANNOT_FLAG_OWN_POST"
+    message = "You cannot flag your own post"
+
+
+class DiscussionFlagNotFound(AppException):
+    """Raised when a moderation flag cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "DISCUSSION_FLAG_NOT_FOUND"
+    message = "Moderation flag not found"
+
+
+class DiscussionFlagAlreadyResolved(AppException):
+    """Raised when an admin attempts to resolve a flag that is no longer open."""
+
+    status_code = 409
+    error_code = "DISCUSSION_FLAG_ALREADY_RESOLVED"
+    message = "This flag has already been resolved"
 
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:

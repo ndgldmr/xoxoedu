@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 async def _make_user_and_token(db: AsyncSession, email: str) -> tuple[User, str]:
@@ -15,10 +15,9 @@ async def _make_user_and_token(db: AsyncSession, email: str) -> tuple[User, str]
         password_hash=hash_password("testpass123"),
         role="student",
         email_verified=True,
+        display_name="Test User",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Test User"))
     await db.commit()
     await db.refresh(user)
     token = create_access_token(str(user.id), user.role)
@@ -32,7 +31,7 @@ async def test_get_me(client: AsyncClient, db: AsyncSession) -> None:
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["email"] == "me@example.com"
-    assert data["profile"]["display_name"] == "Test User"
+    assert data["display_name"] == "Test User"
 
 
 @pytest.mark.asyncio
@@ -51,8 +50,8 @@ async def test_patch_me(client: AsyncClient, db: AsyncSession) -> None:
     )
     assert resp.status_code == 200
     data = resp.json()["data"]
-    assert data["profile"]["display_name"] == "Updated Name"
-    assert data["profile"]["bio"] == "My bio"
+    assert data["display_name"] == "Updated Name"
+    assert data["bio"] == "My bio"
 
 
 @pytest.mark.asyncio

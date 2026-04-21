@@ -5,7 +5,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 MOCK_USERINFO = {
     "sub": "google-uid-12345",
@@ -44,10 +44,9 @@ async def test_oauth_callback_links_existing_email(client: AsyncClient, db: Asyn
         password_hash=None,
         role="student",
         email_verified=False,
+        display_name="Existing",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Existing"))
     await db.commit()
 
     mock_token = {

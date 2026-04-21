@@ -11,9 +11,9 @@ from sqlalchemy.orm import selectinload
 from app.config import settings
 from app.core.exceptions import (
     AssignmentSubmissionNotFound,
-    CourseNotFound,
     CouponAlreadyExists,
     CouponNotFound,
+    CourseNotFound,
     PaymentNotFound,
     RefundFailed,
     SubmissionAlreadyGraded,
@@ -28,15 +28,14 @@ from app.db.models.enrollment import Enrollment, LessonProgress
 from app.db.models.payment import Payment
 from app.db.models.quiz import Quiz, QuizSubmission
 from app.db.models.user import User
-from app.modules.admin.tasks import send_announcement_emails
 from app.modules.admin.schemas import (
     AdminPaymentOut,
     AdminSubmissionOut,
     AnnouncementIn,
     AnnouncementOut,
-    CourseAnalyticsOut,
     CouponCreateIn,
     CouponUpdateIn,
+    CourseAnalyticsOut,
     GradeSubmissionIn,
     LessonDropOffItem,
     PlatformAnalyticsOut,
@@ -44,6 +43,7 @@ from app.modules.admin.schemas import (
     StudentProgressRow,
     TopCourseItem,
 )
+from app.modules.admin.tasks import send_announcement_emails
 
 
 async def list_users(db: AsyncSession, skip: int, limit: int) -> tuple[list[User], int]:
@@ -399,11 +399,41 @@ async def grade_submission(
     submission.grade_score = data.grade_score
     submission.grade_feedback = data.grade_feedback
     submission.graded_by = grader_id
+
+    grade_notif_id = None
+    grade_notif_out = None
+    grade_notif_type = None
+
     if data.publish:
         submission.grade_published_at = datetime.now(UTC)
+        grader = await db.get(User, grader_id)
+
+        from app.modules.notifications import service as notification_service
+
+        grade_notif = notification_service.build_grade_published_notification(
+            recipient_id=submission.user_id,
+            actor=grader,
+            assignment_id=submission.assignment_id,
+            submission_id=submission.id,
+            grade_score=data.grade_score,
+        )
+        db.add(grade_notif)
+        await db.flush()  # populate grade_notif.id + created_at before commit
+        grade_notif_id = grade_notif.id
+        grade_notif_type = grade_notif.type
+        grade_notif_out = notification_service.notification_to_out(grade_notif)
 
     await db.commit()
     await db.refresh(submission)
+
+    if grade_notif_id is not None:
+        await notification_service.dispatch_notification_delivery(
+            db,
+            notification_id=grade_notif_id,
+            recipient_id=submission.user_id,
+            notification_type=grade_notif_type,
+            notification_out=grade_notif_out,
+        )
 
     out = AdminSubmissionOut.model_validate(submission)
     out.user_email = submission.user.email if submission.user else None
@@ -565,7 +595,7 @@ async def get_course_students(
 
     enrollments = await db.scalars(
         base.options(
-            selectinload(Enrollment.user).selectinload(User.profile)
+            selectinload(Enrollment.user)
         )
         .order_by(Enrollment.enrolled_at.desc())
         .offset(skip)
@@ -600,13 +630,11 @@ async def get_course_students(
         completion_pct = (
             completed_lessons / total_lessons if total_lessons > 0 else 0.0
         )
-        profile = user.profile if user.profile else None
-
         rows.append(
             StudentProgressRow(
                 user_id=user.id,
                 user_email=user.email,
-                display_name=profile.display_name if profile else None,
+                display_name=user.display_name,
                 enrolled_at=enrollment.enrolled_at,
                 status=enrollment.status,
                 completion_pct=completion_pct,

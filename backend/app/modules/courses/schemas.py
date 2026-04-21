@@ -92,6 +92,7 @@ class LessonOut(BaseModel):
     title: str
     type: str
     video_asset_id: str | None
+    mux_playback_id: str | None
     is_free_preview: bool
     is_locked: bool
     position: int

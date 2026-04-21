@@ -39,8 +39,15 @@ class Settings(BaseSettings):
     DATABASE_URL: str
     DATABASE_URL_SYNC: str
 
-    # Redis
+    # Redis — app-side only (sessions, quota enforcement, rate limiting, dedup guards)
     REDIS_URL: str
+
+    # Celery — dedicated broker and result backend, separate from app-side Redis.
+    # If either is unset, celery_app.py falls back to REDIS_URL so the stack
+    # boots without configuration changes (same behaviour as before Sprint A2).
+    # In production, CELERY_BROKER_URL should point at the RabbitMQ instance.
+    CELERY_BROKER_URL: str = ""
+    CELERY_RESULT_BACKEND: str = ""
 
     # JWT
     JWT_PRIVATE_KEY: str

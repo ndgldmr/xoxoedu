@@ -32,7 +32,7 @@ async def main(email: str, password: str) -> None:
 
     from app.config import settings
     from app.core.security import hash_password
-    from app.db.models.user import User, UserProfile
+    from app.db.models.user import User
 
     engine = create_async_engine(settings.DATABASE_URL)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -54,10 +54,9 @@ async def main(email: str, password: str) -> None:
             password_hash=hash_password(password),
             role="admin",
             email_verified=True,
+            display_name=email.split("@")[0],
         )
         db.add(user)
-        await db.flush()
-        db.add(UserProfile(user_id=user.id, display_name=email.split("@")[0]))
         await db.commit()
         print(f"[+] Admin user created: {email}")
 

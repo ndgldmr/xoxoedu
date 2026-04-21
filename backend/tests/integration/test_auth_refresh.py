@@ -5,7 +5,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 async def _login(client: AsyncClient, db: AsyncSession, email: str) -> str:
@@ -15,10 +15,9 @@ async def _login(client: AsyncClient, db: AsyncSession, email: str) -> str:
         password_hash=hash_password("testpass123"),
         role="student",
         email_verified=True,
+        display_name="Test",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Test"))
     await db.commit()
 
     resp = await client.post(

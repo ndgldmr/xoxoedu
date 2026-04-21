@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from app.worker.celery_app import celery_app
+from app.worker.retry import media_backoff
 
 
 def _seconds_to_vtt_timestamp(seconds: float) -> str:
@@ -39,7 +40,13 @@ def _build_vtt(segments: list[dict]) -> str:
     return "\n".join(lines)
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)  # type: ignore[misc]
+@celery_app.task(  # type: ignore[misc]
+    bind=True,
+    ignore_result=True,
+    max_retries=3,
+    soft_time_limit=580,
+    time_limit=700,
+)
 def generate_transcript(self, lesson_id: str) -> None:
     """Download audio from Mux, transcribe via Whisper, and store the result.
 
@@ -55,9 +62,27 @@ def generate_transcript(self, lesson_id: str) -> None:
     overwrites it — a re-trigger (e.g. after an admin manually re-runs
     transcription) should always produce a fresh result.
 
+    Task status is recorded in Redis under
+    ``task:status:generate_transcript:{lesson_id}`` **only after the initial
+    guard checks pass** (lesson exists and has a Mux playback ID), so early
+    returns leave no stale "started" record.  The ``retry_stuck_transcriptions``
+    beat task uses this key to avoid re-enqueueing a lesson whose transcription
+    is actively running.
+
+    Retries up to 3 times with exponential backoff (60 s → 120 s → 600 s).
+    The soft time limit (580 s) fires 20 seconds before the hard kill (700 s)
+    so that cleanup has time to complete.  The ffmpeg subprocess timeout (540 s)
+    is set below the soft limit to ensure it terminates cleanly before the
+    signal fires.
+
     Args:
         lesson_id: String UUID of the ``Lesson`` to transcribe.
     """
+    # rdb is initialised inside the try block after guard checks; held here so
+    # the except handler can reference it without a NameError.
+    rdb = None
+    task_id = str(self.request.id)
+
     try:
         import io
         import subprocess
@@ -65,6 +90,7 @@ def generate_transcript(self, lesson_id: str) -> None:
         import uuid as _uuid
 
         import openai
+        import redis as sync_redis
         from sqlalchemy import create_engine, select
         from sqlalchemy.orm import Session
 
@@ -72,6 +98,7 @@ def generate_transcript(self, lesson_id: str) -> None:
         from app.core.mux import get_hls_url
         from app.core.storage import get_r2_client
         from app.db.models.course import Lesson, LessonTranscript
+        from app.worker.task_status import record_failure, record_started, record_success
 
         lesson_uuid = _uuid.UUID(lesson_id)
         engine = create_engine(settings.DATABASE_URL_SYNC)
@@ -82,7 +109,13 @@ def generate_transcript(self, lesson_id: str) -> None:
             ).scalar_one_or_none()
 
             if lesson is None or not lesson.mux_playback_id:
+                # No-op: leave no status record so the beat task can still
+                # re-enqueue if the condition changes (e.g. mux_playback_id set later).
                 return
+
+            # Guard checks passed — record that actual transcription work begins.
+            rdb = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+            record_started(rdb, "generate_transcript", lesson_id, task_id)
 
             hls_url = get_hls_url(lesson.mux_playback_id)
 
@@ -99,7 +132,7 @@ def generate_transcript(self, lesson_id: str) -> None:
                         tmp.name,
                     ],
                     check=True,
-                    timeout=600,
+                    timeout=540,             # leave headroom before soft_time_limit=580
                     capture_output=True,
                 )
                 tmp.seek(0)
@@ -146,5 +179,16 @@ def generate_transcript(self, lesson_id: str) -> None:
 
             db.commit()
 
+        record_success(rdb, "generate_transcript", lesson_id, task_id)
+
+        # Kick off RAG indexing now that plain_text is available.
+        from app.modules.rag.tasks import index_lesson
+        index_lesson.delay(lesson_id)
+
     except Exception as exc:
-        raise self.retry(exc=exc) from exc
+        if rdb is not None and self.request.retries >= self.max_retries:
+            try:
+                record_failure(rdb, "generate_transcript", lesson_id, task_id, str(exc))
+            except Exception:
+                pass
+        raise self.retry(exc=exc, countdown=media_backoff(self.request.retries)) from exc

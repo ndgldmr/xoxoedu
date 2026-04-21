@@ -3,9 +3,16 @@
 import uuid
 
 from app.worker.celery_app import celery_app
+from app.worker.retry import media_backoff
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)  # type: ignore[misc]
+@celery_app.task(  # type: ignore[misc]
+    bind=True,
+    ignore_result=True,
+    max_retries=3,
+    soft_time_limit=55,
+    time_limit=60,
+)
 def generate_certificate_pdf(self, certificate_id: str) -> None:
     """Generate a certificate PDF and upload it to R2.
 
@@ -14,10 +21,24 @@ def generate_certificate_pdf(self, certificate_id: str) -> None:
     HTML template, converts it to PDF via WeasyPrint, and stores the result
     in R2 under ``certificates/<certificate_id>.pdf``.
 
+    Task status is recorded in Redis under
+    ``task:status:generate_certificate_pdf:{certificate_id}`` **only after
+    the certificate, user, and course records are confirmed to exist**, so
+    early returns (missing entity) leave no stale "started" record.
+
+    Retries up to 3 times with exponential backoff (60 s → 120 s → 600 s) on
+    transient DB or storage failures.
+
     Args:
         certificate_id: String UUID of the certificate row to process.
     """
+    # rdb is initialised inside the try block after guard checks; held here so
+    # the except handler can reference it without a NameError.
+    rdb = None
+    task_id = str(self.request.id)
+
     try:
+        import redis as sync_redis
         import weasyprint
         from sqlalchemy import create_engine
         from sqlalchemy.orm import Session
@@ -25,7 +46,8 @@ def generate_certificate_pdf(self, certificate_id: str) -> None:
         from app.config import settings
         from app.core.storage import get_public_url, get_r2_client
         from app.db.models.certificate import Certificate
-        from app.db.models.user import User, UserProfile
+        from app.db.models.user import User
+        from app.worker.task_status import record_failure, record_started, record_success
 
         engine = create_engine(settings.DATABASE_URL_SYNC)
         with Session(engine) as db:
@@ -34,20 +56,17 @@ def generate_certificate_pdf(self, certificate_id: str) -> None:
                 return
 
             user = db.get(User, cert.user_id)
-            from sqlalchemy import select
-            profile = db.scalar(
-                select(UserProfile).where(UserProfile.user_id == cert.user_id)
-            )
             from app.db.models.course import Course
             course = db.get(Course, cert.course_id)
 
-            if not cert or not user or not course:
+            if not user or not course:
                 return
 
-            student_name = (
-                (profile.display_name if profile and profile.display_name else None)
-                or user.email
-            )
+            # All entities confirmed — record that PDF generation begins.
+            rdb = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+            record_started(rdb, "generate_certificate_pdf", certificate_id, task_id)
+
+            student_name = user.display_name or user.email
             instructor_name = course.display_instructor_name or "XOXO Education"
             issued_date = cert.issued_at.strftime("%B %d, %Y")
 
@@ -111,5 +130,12 @@ def generate_certificate_pdf(self, certificate_id: str) -> None:
             cert.pdf_url = get_public_url(key)
             db.commit()
 
+        record_success(rdb, "generate_certificate_pdf", certificate_id, task_id)
+
     except Exception as exc:
-        raise self.retry(exc=exc) from exc
+        if rdb is not None and self.request.retries >= self.max_retries:
+            try:
+                record_failure(rdb, "generate_certificate_pdf", certificate_id, task_id, str(exc))
+            except Exception:
+                pass
+        raise self.retry(exc=exc, countdown=media_backoff(self.request.retries)) from exc

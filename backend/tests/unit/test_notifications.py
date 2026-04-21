@@ -1,0 +1,186 @@
+"""Unit tests for notification builders, preference helpers, and email tasks."""
+
+import uuid
+from datetime import UTC, datetime
+
+import pytest
+from pydantic import ValidationError
+
+from app.db.models.user import User
+from app.modules.notifications.constants import NotificationType
+from app.modules.notifications.schemas import (
+    ChannelPreferenceOut,
+    ChannelPreferencePatch,
+    NotificationOut,
+)
+from app.modules.notifications.service import (
+    build_discussion_reply_notification,
+    merge_channel_preferences,
+)
+from app.modules.notifications.tasks import _render_notification_email
+
+
+def _make_user(
+    *,
+    email: str = "author@example.com",
+    username: str = "author_user",
+    display_name: str | None = "Author User",
+) -> User:
+    user = User()
+    user.id = uuid.uuid4()
+    user.email = email
+    user.username = username
+    user.display_name = display_name
+    user.role = "student"
+    user.email_verified = True
+    return user
+
+
+def test_build_discussion_reply_notification() -> None:
+    actor = _make_user(display_name="Alice")
+    lesson_id = uuid.uuid4()
+    parent_post_id = uuid.uuid4()
+    reply_post_id = uuid.uuid4()
+    notification = build_discussion_reply_notification(
+        recipient_id=uuid.uuid4(),
+        actor=actor,
+        lesson_id=lesson_id,
+        parent_post_id=parent_post_id,
+        reply_post_id=reply_post_id,
+        reply_body="Thanks for the detailed explanation on this lesson.",
+    )
+
+    assert notification.type == NotificationType.DISCUSSION_REPLY.value
+    assert notification.title == "Alice replied to your discussion post"
+    assert notification.body.startswith("Thanks for the detailed explanation")
+    assert notification.target_url == f"/lessons/{lesson_id}/discussions?post_id={parent_post_id}"
+    assert notification.event_metadata["post_id"] == str(reply_post_id)
+
+
+def test_notification_out_rejects_invalid_enum_value() -> None:
+    with pytest.raises(ValidationError):
+        NotificationOut(
+            id=uuid.uuid4(),
+            type="not_a_real_type",
+            title="Bad",
+            body="Bad",
+            actor_summary="System",
+            target_url="/notifications/bad",
+            event_metadata={},
+            is_read=False,
+            read_at=None,
+            created_at=datetime(2026, 4, 20, tzinfo=UTC),
+        )
+
+
+def test_merge_channel_preferences_preserves_omitted_fields() -> None:
+    current = ChannelPreferenceOut(in_app=True, email=False)
+    merged = merge_channel_preferences(
+        current,
+        ChannelPreferencePatch(in_app=False),
+    )
+
+    assert merged.in_app is False
+    assert merged.email is False
+
+
+# ── Email template rendering ───────────────────────────────────────────────────
+
+
+def test_render_discussion_reply_email_contains_actor_and_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="discussion_reply",
+        title="Alice replied to your discussion post",
+        body="Thanks for the explanation!",
+        target_url="/lessons/abc/discussions?post_id=xyz",
+        actor_summary="Alice",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "Alice" in subject
+    assert "replied" in subject
+    assert "Thanks for the explanation!" in html
+    assert "https://app.xoxoedu.com/lessons/abc/discussions?post_id=xyz" in html
+    assert "View Reply" in html
+
+
+def test_render_notification_email_escapes_user_controlled_content() -> None:
+    subject, html = _render_notification_email(
+        notification_type="discussion_reply",
+        title="<script>alert('title')</script>",
+        body="<img src=x onerror=alert('body')>",
+        target_url='/lessons/abc?next="bad"',
+        actor_summary="Alice",
+        frontend_url="https://app.xoxoedu.com/",
+    )
+
+    assert subject == "Alice replied to your discussion post"
+    assert "<script>" not in html
+    assert "<img" not in html
+    assert "&lt;script&gt;alert(&#x27;title&#x27;)&lt;/script&gt;" in html
+    assert "&lt;img src=x onerror=alert(&#x27;body&#x27;)&gt;" in html
+    assert 'href="https://app.xoxoedu.com/lessons/abc?next=&quot;bad&quot;"' in html
+
+
+def test_render_mention_email_contains_actor_and_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="mention",
+        title="Bob mentioned you in a discussion",
+        body="Hey @carol, check this out.",
+        target_url="/lessons/def/discussions?post_id=uvw",
+        actor_summary="Bob",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "Bob" in subject
+    assert "mentioned" in subject
+    assert "View Post" in html
+
+
+def test_render_grade_published_email_contains_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="grade_published",
+        title="Your assignment grade was published",
+        body="Your grade is now available. Score: 87.0.",
+        target_url="/assignments/123/submissions/456",
+        actor_summary="Instructor",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "grade" in subject.lower()
+    assert "Score: 87.0" in html
+    assert "View Grade" in html
+
+
+def test_render_certificate_issued_email_contains_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="certificate_issued",
+        title="Your certificate is ready",
+        body="Your course-completion certificate has been issued.",
+        target_url="/certificates/789",
+        actor_summary="XOXO Education",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "certificate" in subject.lower()
+    assert "View Certificate" in html
+    assert "https://app.xoxoedu.com/certificates/789" in html
+
+
+# ── Email preference gating ────────────────────────────────────────────────────
+
+
+def test_render_unknown_notification_type_falls_back_to_title() -> None:
+    """An unrecognised notification type should fall back to the title as subject."""
+    subject, html = _render_notification_email(
+        notification_type="unknown_future_type",
+        title="Something happened",
+        body="Details here.",
+        target_url="/somewhere",
+        actor_summary="System",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert subject == "Something happened"
+    assert "Details here." in html
+    assert "View" in html  # generic CTA label

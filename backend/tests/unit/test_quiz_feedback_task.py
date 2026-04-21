@@ -99,7 +99,7 @@ def _make_submission() -> MagicMock:
     sub.user_id = uuid.UUID(_USER_ID)
     sub.quiz_id = uuid.UUID(_QUIZ_ID)
     sub.quiz = quiz
-    sub.answers = {_Q_ID: ["b"]}
+    sub.answers = {_Q_ID: ["a"]}  # incorrect — triggers feedback generation
     return sub
 
 
@@ -137,6 +137,7 @@ def test_llm_exception_stores_empty_feedback() -> None:
         patch("sqlalchemy.orm.Session", return_value=db),
         patch("litellm.completion", side_effect=Exception("provider down")),
         patch("app.modules.ai.tasks.log_ai_usage"),
+        patch("redis.from_url", return_value=MagicMock()),
     ):
         from app.modules.ai.tasks import generate_quiz_feedback
         result = generate_quiz_feedback.apply(args=[_SUB_ID])
@@ -158,6 +159,7 @@ def test_missing_submission_returns_silently() -> None:
     with (
         patch("sqlalchemy.create_engine"),
         patch("sqlalchemy.orm.Session", return_value=db),
+        patch("redis.from_url", return_value=MagicMock()),
     ):
         from app.modules.ai.tasks import generate_quiz_feedback
         task_result = generate_quiz_feedback.apply(

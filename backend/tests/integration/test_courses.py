@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
 from app.db.models.course import Course
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tuple[User, str]:
@@ -16,10 +16,9 @@ async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tup
         password_hash=hash_password("testpass123"),
         role=role,
         email_verified=True,
+        display_name=email.split("@")[0],
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name=email.split("@")[0]))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)

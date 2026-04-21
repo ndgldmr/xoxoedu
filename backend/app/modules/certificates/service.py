@@ -65,11 +65,34 @@ async def check_and_issue(
         verification_token=secrets.token_urlsafe(32),
     )
     db.add(cert)
+    await db.flush()
+
+    from app.modules.notifications import service as notification_service
+
+    cert_notif = notification_service.build_certificate_issued_notification(
+        recipient_id=user_id,
+        certificate_id=cert.id,
+        course_id=course_id,
+    )
+    db.add(cert_notif)
+    await db.flush()  # populate cert_notif.id + created_at before commit
+    cert_notif_id = cert_notif.id
+    cert_notif_type = cert_notif.type
+    cert_notif_out = notification_service.notification_to_out(cert_notif)
+
     await db.commit()
     await db.refresh(cert)
 
     from app.modules.certificates.tasks import generate_certificate_pdf
     generate_certificate_pdf.delay(str(cert.id))
+
+    await notification_service.dispatch_notification_delivery(
+        db,
+        notification_id=cert_notif_id,
+        recipient_id=user_id,
+        notification_type=cert_notif_type,
+        notification_out=cert_notif_out,
+    )
 
     return CertificateOut.model_validate(cert)
 
@@ -119,11 +142,34 @@ async def generate(
         verification_token=secrets.token_urlsafe(32),
     )
     db.add(cert)
+    await db.flush()
+
+    from app.modules.notifications import service as notification_service
+
+    cert_notif = notification_service.build_certificate_issued_notification(
+        recipient_id=user_id,
+        certificate_id=cert.id,
+        course_id=course_id,
+    )
+    db.add(cert_notif)
+    await db.flush()  # populate cert_notif.id + created_at before commit
+    cert_notif_id = cert_notif.id
+    cert_notif_type = cert_notif.type
+    cert_notif_out = notification_service.notification_to_out(cert_notif)
+
     await db.commit()
     await db.refresh(cert)
 
     from app.modules.certificates.tasks import generate_certificate_pdf
     generate_certificate_pdf.delay(str(cert.id))
+
+    await notification_service.dispatch_notification_delivery(
+        db,
+        notification_id=cert_notif_id,
+        recipient_id=user_id,
+        notification_type=cert_notif_type,
+        notification_out=cert_notif_out,
+    )
 
     return CertificateOut.model_validate(cert)
 
@@ -169,13 +215,10 @@ async def verify(db: AsyncSession, token: str) -> VerifyResponse:
     if not cert:
         raise CertificateNotFound()
 
-    from app.db.models.user import User, UserProfile
+    from app.db.models.user import User
     user = await db.get(User, cert.user_id)
-    profile = await db.scalar(
-        select(UserProfile).where(UserProfile.user_id == cert.user_id)
-    )
 
-    student_name = (profile.display_name if profile and profile.display_name else None) or (
+    student_name = (user.display_name if user and user.display_name else None) or (
         user.email if user else "Student"
     )
     instructor_name = cert.course.display_instructor_name if cert.course else None

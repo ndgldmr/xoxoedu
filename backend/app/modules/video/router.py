@@ -214,6 +214,9 @@ async def update_transcript(
     await db.commit()
     await db.refresh(transcript)
 
+    from app.modules.rag.tasks import index_lesson
+    index_lesson.delay(str(lesson_id))
+
     return ok(
         TranscriptOut(
             lesson_id=lesson_id,

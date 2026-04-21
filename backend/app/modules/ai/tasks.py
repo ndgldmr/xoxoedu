@@ -6,6 +6,7 @@ import json
 import re
 
 from app.worker.celery_app import celery_app
+from app.worker.retry import ai_backoff
 
 
 def _parse_feedback_json(content: str, expected_count: int) -> list[str]:
@@ -39,7 +40,13 @@ def _parse_feedback_json(content: str, expected_count: int) -> list[str]:
         return [""] * expected_count
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)  # type: ignore[misc]
+@celery_app.task(  # type: ignore[misc]
+    bind=True,
+    ignore_result=True,
+    max_retries=3,
+    soft_time_limit=15,
+    time_limit=20,
+)
 def log_ai_usage(
     self,
     user_id: str | None,
@@ -54,6 +61,9 @@ def log_ai_usage(
     Runs asynchronously after the LLM call completes so the hot request path
     is never blocked by a Postgres write.  Uses a synchronous session because
     Celery workers run outside of asyncio.
+
+    Retries up to 3 times with exponential backoff (30 s → 60 s → 120 s) on
+    transient DB failures.
 
     Args:
         user_id: String UUID of the user who triggered the call, or ``None``.
@@ -87,10 +97,16 @@ def log_ai_usage(
             db.commit()
 
     except Exception as exc:
-        raise self.retry(exc=exc) from exc
+        raise self.retry(exc=exc, countdown=ai_backoff(self.request.retries)) from exc
 
 
-@celery_app.task(bind=True, max_retries=3, default_retry_delay=5)  # type: ignore[misc]
+@celery_app.task(  # type: ignore[misc]
+    bind=True,
+    ignore_result=True,
+    max_retries=3,
+    soft_time_limit=150,
+    time_limit=180,
+)
 def generate_quiz_feedback(self, submission_id: str) -> None:
     """Generate AI feedback for each question in a quiz submission.
 
@@ -98,18 +114,34 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
     LLM call for all questions using ``litellm.completion`` (sync).  The
     response is expected to be a JSON array of ``{"feedback": "..."}`` objects,
     one per question in order.  Malformed responses fall back to empty strings.
-    DB errors trigger a Celery retry.
+    DB errors trigger a Celery retry with exponential backoff.
 
     Idempotency: if any feedback rows already exist for the submission, the task
     returns immediately (the single-call design is all-or-nothing on first run).
 
+    Task status is recorded in Redis under
+    ``task:status:quiz_feedback:{submission_id}`` **only when the LLM call is
+    actually attempted** — after all early-return guard checks pass.  Early
+    returns (submission missing, feedback already written, AI disabled) leave
+    no status record so the key is not stuck in "started".
+
+    Retries up to 3 times with exponential backoff (30 s → 60 s → 120 s) on
+    transient DB failures.  LLM call failures are caught internally and result
+    in empty feedback strings rather than retries (graceful AI degradation).
+
     Args:
         submission_id: String UUID of the ``QuizSubmission`` to process.
     """
+    # rdb is initialised inside the try block; held here so the except handler
+    # can reference it for failure recording without a NameError.
+    rdb = None
+    task_id = str(self.request.id)
+
     try:
         import uuid as _uuid
 
         import litellm
+        import redis as sync_redis
         from sqlalchemy import create_engine, func, select
         from sqlalchemy.orm import Session, joinedload
 
@@ -118,6 +150,9 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
         from app.db.models.course import Chapter, Lesson
         from app.db.models.quiz import Quiz, QuizFeedback, QuizSubmission
         from app.modules.ai.service import render_prompt
+        from app.worker.task_status import record_failure, record_started, record_success
+
+        rdb = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
 
         submission_uuid = _uuid.UUID(submission_id)
         engine = create_engine(settings.DATABASE_URL_SYNC)
@@ -160,12 +195,9 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
             if ai_config is not None and not ai_config.ai_enabled:
                 return
 
-            tone = ai_config.tone if ai_config else "encouraging"
-            override = ai_config.system_prompt_override if ai_config else None
-            model = settings.AI_MODEL
-            user_id_str = str(sub.user_id)
-
-            # Build per-question context for the prompt
+            # Build per-question context for the prompt — incorrect answers only.
+            # Correct answers need no feedback and skipping them reduces LLM cost.
+            incorrect_questions = []
             questions_data = []
             for question in sub.quiz.questions:
                 student_answers: list[str] = sub.answers.get(str(question.id), [])
@@ -176,16 +208,30 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
                     )
                 else:
                     is_correct = set(student_answers) == set(question.correct_answers)
+
+                if is_correct:
+                    continue  # no feedback needed for correct answers
+
+                incorrect_questions.append(question)
                 questions_data.append({
                     "stem": question.stem,
                     "options": question.options,
                     "correct_answers": question.correct_answers,
                     "student_answers": student_answers,
-                    "is_correct": is_correct,
+                    "is_correct": False,
                 })
 
             if not questions_data:
+                # All questions answered correctly — nothing to explain.
                 return
+
+            # All guards passed — record that we are now doing real work.
+            record_started(rdb, "quiz_feedback", submission_id, task_id)
+
+            tone = ai_config.tone if ai_config else "encouraging"
+            override = ai_config.system_prompt_override if ai_config else None
+            model = settings.AI_MODEL
+            user_id_str = str(sub.user_id)
 
             system_msg = render_prompt(
                 "base.j2", tone=tone, system_prompt_override=override
@@ -221,7 +267,7 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
                     submission_id, traceback.format_exc()
                 )
 
-            for question, feedback_text in zip(sub.quiz.questions, feedback_texts):
+            for question, feedback_text in zip(incorrect_questions, feedback_texts):
                 db.add(
                     QuizFeedback(
                         submission_id=submission_uuid,
@@ -231,6 +277,8 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
                 )
 
             db.commit()
+
+        record_success(rdb, "quiz_feedback", submission_id, task_id)
 
         if tokens_in > 0 or tokens_out > 0:
             log_ai_usage.delay(
@@ -243,4 +291,9 @@ def generate_quiz_feedback(self, submission_id: str) -> None:
             )
 
     except Exception as exc:
-        raise self.retry(exc=exc) from exc
+        if rdb is not None and self.request.retries >= self.max_retries:
+            try:
+                record_failure(rdb, "quiz_feedback", submission_id, task_id, str(exc))
+            except Exception:
+                pass
+        raise self.retry(exc=exc, countdown=ai_backoff(self.request.retries)) from exc

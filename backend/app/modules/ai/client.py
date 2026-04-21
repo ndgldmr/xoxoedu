@@ -9,6 +9,7 @@ sees them.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -214,6 +215,57 @@ class LLMClient:
                     messages[i]["content"] = content
                 break
         return messages
+
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        temperature: float = 0.3,
+    ) -> AsyncGenerator[str, None]:
+        """Stream LLM completion tokens as they arrive.
+
+        Checks the circuit breaker and truncates the prompt before opening the
+        stream, then yields each non-empty content delta as a plain string.
+        Unlike ``complete()``, retries are not applied — a mid-stream failure
+        closes the generator and the caller is responsible for signalling the
+        error to the client.
+
+        Args:
+            messages: OpenAI-style message list.
+            temperature: Sampling temperature (default ``0.3``).
+
+        Yields:
+            Content delta strings produced by the model.
+
+        Raises:
+            AIUnavailable: If the circuit breaker is open before the stream
+                starts, or if the provider raises on the initial connection.
+        """
+        if self._circuit.is_open():
+            raise AIUnavailable()
+
+        messages = self._truncate_to_context(messages)
+
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        if settings.GEMINI_API_KEY:
+            kwargs["api_key"] = settings.GEMINI_API_KEY
+
+        try:
+            response = await litellm.acompletion(**kwargs)
+            async for chunk in response:
+                delta = chunk.choices[0].delta.content if chunk.choices else None
+                if delta:
+                    yield delta
+            await self._circuit.record_success()
+        except Exception as exc:
+            await self._circuit.record_failure()
+            raise AIUnavailable() from exc
 
     @retry(
         stop=stop_after_attempt(3),

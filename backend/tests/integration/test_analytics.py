@@ -12,7 +12,7 @@ from app.db.models.course import Chapter, Course, Lesson
 from app.db.models.enrollment import Enrollment, LessonProgress
 from app.db.models.payment import Payment
 from app.db.models.quiz import Quiz, QuizQuestion, QuizSubmission
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -24,10 +24,9 @@ async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tup
         password_hash=hash_password("pass"),
         role=role,
         email_verified=True,
+        display_name=email.split("@")[0],
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name=email.split("@")[0]))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)

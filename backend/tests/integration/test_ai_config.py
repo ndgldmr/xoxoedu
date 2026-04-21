@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
 from app.db.models.course import Course
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -22,10 +22,9 @@ async def _make_user(
         password_hash=hash_password("testpass"),
         role=role,
         email_verified=True,
+        display_name="Test User",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Test User"))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)

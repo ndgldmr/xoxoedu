@@ -3,15 +3,24 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
 class RegisterRequest(BaseModel):
     """Payload for ``POST /auth/register``."""
 
     email: EmailStr
+    username: str = Field(min_length=3, max_length=50, pattern=r"^[a-z0-9_]+$")
     password: str = Field(min_length=8, max_length=128)
     display_name: str = Field(min_length=1, max_length=100)
+
+    @field_validator("username", mode="before")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        """Normalize signup handles before regex validation."""
+        if isinstance(value, str):
+            return value.strip().lower()
+        return value
 
 
 class LoginRequest(BaseModel):
@@ -29,19 +38,6 @@ class TokenResponse(BaseModel):
     expires_in: int
 
 
-class ProfileOut(BaseModel):
-    """Serialised ``UserProfile`` fields returned within ``UserOut``."""
-
-    model_config = ConfigDict(from_attributes=True)
-
-    display_name: str | None
-    avatar_url: str | None
-    bio: str | None
-    headline: str | None
-    social_links: dict | None
-    skills: list[str] | None
-
-
 class UserOut(BaseModel):
     """Full user representation returned by auth and user-management endpoints."""
 
@@ -49,10 +45,16 @@ class UserOut(BaseModel):
 
     id: uuid.UUID
     email: str
+    username: str
     role: str
     email_verified: bool
     created_at: datetime
-    profile: ProfileOut | None
+    display_name: str | None
+    avatar_url: str | None
+    bio: str | None
+    headline: str | None
+    social_links: dict | None
+    skills: list[str] | None
 
 
 class ForgotPasswordRequest(BaseModel):

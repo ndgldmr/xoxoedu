@@ -10,7 +10,42 @@ services:
       PYTHONDONTWRITEBYTECODE: "1"
       PYTHONUNBUFFERED: "1"
 
-  worker:
+  worker-critical:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - ./app:/app/app
+
+  worker-bulk:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - ./app:/app/app
+
+  worker-ai:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - ./app:/app/app
+
+  worker-media:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - ./app:/app/app
+
+  worker-indexing:
+    build:
+      context: .
+      target: builder
+    volumes:
+      - ./app:/app/app
+
+  worker-beat:
     build:
       context: .
       target: builder

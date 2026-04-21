@@ -12,7 +12,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.models.certificate import Certificate
 from app.db.models.course import Chapter, Course, Lesson
 from app.db.models.enrollment import Enrollment, LessonProgress
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -24,10 +24,9 @@ async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tup
         password_hash=hash_password("testpass"),
         role=role,
         email_verified=True,
+        display_name="Test Student",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Test Student"))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)

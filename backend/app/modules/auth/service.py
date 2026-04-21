@@ -14,6 +14,7 @@ from app.core.exceptions import (
     RefreshTokenReplayed,
     TokenExpired,
     TokenInvalid,
+    UsernameAlreadyTaken,
 )
 from app.core.security import (
     create_access_token,
@@ -26,15 +27,23 @@ from app.core.security import (
 )
 from app.db.models.oauth_account import OAuthAccount
 from app.db.models.session import Session
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
+from app.modules.users.usernames import generate_unique_username
 
 
-async def register(db: AsyncSession, email: str, password: str, display_name: str) -> User:
+async def register(
+    db: AsyncSession,
+    email: str,
+    username: str,
+    password: str,
+    display_name: str,
+) -> User:
     """Create a new student account and send an email-verification link.
 
     Args:
         db: Async database session.
         email: Desired email address; must be unique across all users.
+        username: Desired mention handle; must be unique across all users.
         password: Plain-text password; stored as a bcrypt hash.
         display_name: Initial display name for the user's public profile.
 
@@ -43,22 +52,26 @@ async def register(db: AsyncSession, email: str, password: str, display_name: st
 
     Raises:
         EmailAlreadyRegistered: If an account with that email already exists.
+        UsernameAlreadyTaken: If an account with that username already exists.
     """
     existing = await db.scalar(select(User).where(User.email == email))
     if existing:
         raise EmailAlreadyRegistered()
 
+    username = username.strip().lower()
+    existing_username = await db.scalar(select(User).where(User.username == username))
+    if existing_username:
+        raise UsernameAlreadyTaken()
+
     user = User(
         email=email,
+        username=username,
         password_hash=hash_password(password),
         role="student",
         email_verified=False,
+        display_name=display_name,
     )
     db.add(user)
-    await db.flush()
-
-    profile = UserProfile(user_id=user.id, display_name=display_name)
-    db.add(profile)
     await db.commit()
     await db.refresh(user)
 
@@ -314,15 +327,23 @@ async def get_or_create_oauth_user(
         # Check for existing user by email
         user = await db.scalar(select(User).where(User.email == email))
         if not user:
-            user = User(email=email, role="student", email_verified=True)
-            db.add(user)
-            await db.flush()
-            profile = UserProfile(
-                user_id=user.id, display_name=display_name or email.split("@")[0]
+            user = User(
+                email=email,
+                username=await generate_unique_username(db, email=email, display_name=display_name),
+                role="student",
+                email_verified=True,
+                display_name=display_name or email.split("@")[0],
             )
-            db.add(profile)
+            db.add(user)
+            await db.flush()  # Populate user.id before referencing it in OAuthAccount
         else:
             user.email_verified = True
+            if not user.username:
+                user.username = await generate_unique_username(
+                    db,
+                    email=user.email,
+                    display_name=user.display_name,
+                )
 
         oauth_account = OAuthAccount(
             user_id=user.id,

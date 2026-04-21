@@ -22,11 +22,39 @@ def setup_database() -> None:
     Base.metadata.drop_all(sync_engine)
     with sync_engine.connect() as conn:
         conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+        conn.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
         conn.commit()
     Base.metadata.create_all(sync_engine)
     yield
     Base.metadata.drop_all(sync_engine)
     sync_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+async def reset_redis_singleton() -> AsyncGenerator[None, None]:
+    """Reset the module-level Redis singleton before each test.
+
+    Each pytest-asyncio test runs in its own event loop.  The aioredis
+    singleton in app.core.redis is bound to the event loop of the first test
+    that touches it.  Subsequent tests run in a different loop and get a
+    stale client, causing 'Event loop is closed' errors on teardown.  Clearing
+    the singleton before every test forces a fresh client per loop.
+    """
+    import app.core.redis as redis_module
+
+    if redis_module._redis is not None:
+        try:
+            await redis_module._redis.aclose()
+        except Exception:
+            pass
+        redis_module._redis = None
+    yield
+    if redis_module._redis is not None:
+        try:
+            await redis_module._redis.aclose()
+        except Exception:
+            pass
+        redis_module._redis = None
 
 
 @pytest.fixture

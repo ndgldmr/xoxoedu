@@ -22,7 +22,7 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 @router.post("/register", status_code=201)
 async def register(body: RegisterRequest, db: AsyncSession = Depends(get_db)) -> dict:
     """Register a new student account and dispatch an email-verification link."""
-    user = await service.register(db, body.email, body.password, body.display_name)
+    user = await service.register(db, body.email, body.username, body.password, body.display_name)
     return ok(UserOut.model_validate(user).model_dump())
 
 
@@ -44,7 +44,7 @@ async def verify_email(token: str, db: AsyncSession = Depends(get_db)) -> dict:
 
 @router.post("/login")
 async def login(body: LoginRequest, response: Response, db: AsyncSession = Depends(get_db)) -> dict:
-    """Authenticate with email and password, returning an access token and setting a refresh-token cookie."""
+    """Authenticate with email and password, returning tokens and user data."""
     access_token, user = await service.login(db, body.email, body.password, response)
     token_resp = TokenResponse(
         access_token=access_token,
@@ -99,7 +99,7 @@ async def google_login(request: Request) -> Response:
 async def google_callback(
     request: Request, response: Response, db: AsyncSession = Depends(get_db)
 ) -> dict:
-    """Handle the Google OAuth callback: exchange the code for tokens and return application credentials."""
+    """Handle the Google OAuth callback and return application credentials."""
     token = await google_get_token(request)
     userinfo = token.get("userinfo", {})
 

@@ -23,10 +23,13 @@ from app.modules.auth.router import router as auth_router
 from app.modules.certificates.router import router as certificates_router
 from app.modules.coupons.router import router as coupons_router
 from app.modules.courses.router import router as courses_router
+from app.modules.discussions.router import router as discussions_router
 from app.modules.enrollments.router import router as enrollments_router
 from app.modules.media.router import router as media_router
+from app.modules.notifications.router import router as notifications_router
 from app.modules.payments.router import router as payments_router
 from app.modules.quizzes.router import router as quizzes_router
+from app.modules.rag.router import router as rag_router
 from app.modules.users.router import router as users_router
 from app.modules.video.router import router as video_router
 
@@ -86,10 +89,13 @@ app.include_router(quizzes_router, prefix="/api/v1")
 app.include_router(assignments_router, prefix="/api/v1")
 app.include_router(ai_router, prefix="/api/v1")
 app.include_router(media_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
 app.include_router(coupons_router, prefix="/api/v1")
 app.include_router(certificates_router, prefix="/api/v1")
 app.include_router(video_router, prefix="/api/v1")
+app.include_router(rag_router, prefix="/api/v1")
+app.include_router(discussions_router, prefix="/api/v1")
 
 
 @app.get("/health")

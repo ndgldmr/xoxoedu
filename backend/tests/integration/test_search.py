@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.db.models.course import Course
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 async def _seed_course(db: AsyncSession, title: str, status: str = "published") -> Course:
@@ -17,10 +17,9 @@ async def _seed_course(db: AsyncSession, title: str, status: str = "published") 
         password_hash=hash_password("x"),
         role="admin",
         email_verified=True,
+        display_name="Admin",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user_id, display_name="Admin"))
     course = Course(
         slug=f"{title.lower().replace(' ', '-')}-{uuid.uuid4().hex[:6]}",
         title=title,

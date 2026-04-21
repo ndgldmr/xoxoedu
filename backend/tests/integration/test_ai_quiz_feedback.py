@@ -14,7 +14,7 @@ from app.core.security import create_access_token, hash_password
 from app.db.models.ai import AIUsageBudget
 from app.db.models.course import Chapter, Course, Lesson
 from app.db.models.quiz import Quiz, QuizFeedback, QuizQuestion, QuizSubmission
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -28,10 +28,9 @@ async def _make_user(
         password_hash=hash_password("testpass123"),
         role=role,
         email_verified=True,
+        display_name=email.split("@")[0],
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name=email.split("@")[0]))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)
@@ -165,11 +164,11 @@ async def test_feedback_visible_in_submission_after_task(
     lesson = await _make_lesson(db, course)
     quiz = await _make_quiz(db, lesson.id)
 
-    # Submit quiz (mock delay so task doesn't actually enqueue)
+    # Submit quiz with wrong answer so the task has something to give feedback on
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay"):
         resp = await client.post(
             f"/api/v1/quizzes/{quiz.id}/submit",
-            json={"answers": {str(quiz.questions[0].id): ["a"]}},
+            json={"answers": {str(quiz.questions[0].id): ["b"]}},
             headers=_auth(s_token),
         )
     assert resp.status_code == 201

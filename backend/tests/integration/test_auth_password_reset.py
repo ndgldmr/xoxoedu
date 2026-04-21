@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_email_token, hash_password
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 @pytest.mark.asyncio
@@ -28,10 +28,9 @@ async def test_forgot_password_sends_email(client: AsyncClient, db: AsyncSession
         password_hash=hash_password("oldpass123"),
         role="student",
         email_verified=True,
+        display_name="Reset",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Reset"))
     await db.commit()
 
     with patch("app.modules.auth.tasks.send_password_reset_email.delay") as mock_task:
@@ -51,10 +50,9 @@ async def test_reset_password_changes_password(client: AsyncClient, db: AsyncSes
         password_hash=hash_password("oldpass123"),
         role="student",
         email_verified=True,
+        display_name="DoReset",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="DoReset"))
     await db.commit()
 
     token = create_email_token("doreset@example.com", purpose="reset")

@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import create_access_token, hash_password
 from app.db.models.course import Chapter, Course, Lesson, LessonTranscript
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
@@ -28,10 +28,9 @@ async def _make_user(
         password_hash=hash_password("testpass123"),
         role=role,
         email_verified=True,
+        display_name=email.split("@")[0],
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name=email.split("@")[0]))
     await db.commit()
     await db.refresh(user)
     return user, create_access_token(str(user.id), user.role)
@@ -89,7 +88,7 @@ async def test_request_video_upload_returns_upload_url(
     admin, token = await _make_user(db, "admin-upload@example.com")
     lesson = await _make_video_lesson(db, admin.id)
 
-    with patch("app.modules.admin.router.create_upload") as mock_upload:
+    with patch("app.core.mux.create_upload") as mock_upload:
         mock_upload.return_value = ("https://storage.googleapis.com/mux-uploads/fake", "asset-abc")
 
         resp = await client.post(
@@ -111,7 +110,7 @@ async def test_request_video_upload_persists_asset_id(
     admin, token = await _make_user(db, "admin-persist@example.com")
     lesson = await _make_video_lesson(db, admin.id)
 
-    with patch("app.modules.admin.router.create_upload") as mock_upload:
+    with patch("app.core.mux.create_upload") as mock_upload:
         mock_upload.return_value = ("https://mux.com/upload/url", "asset-xyz")
         await client.post(
             f"/api/v1/admin/lessons/{lesson.id}/video",
@@ -126,7 +125,7 @@ async def test_request_video_upload_persists_asset_id(
 async def test_request_video_upload_lesson_not_found(
     client: AsyncClient, db: AsyncSession
 ) -> None:
-    admin, token = await _make_user(db, "admin-notfound@example.com")
+    admin, token = await _make_user(db, "admin-video-notfound@example.com")
     resp = await client.post(
         f"/api/v1/admin/lessons/{uuid.uuid4()}/video",
         headers={"Authorization": f"Bearer {token}"},
@@ -298,7 +297,10 @@ async def test_admin_can_edit_transcript(
     await db.commit()
 
     mock_r2 = MagicMock()
-    with patch("app.modules.video.router.get_r2_client", return_value=mock_r2):
+    with (
+        patch("app.core.storage.get_r2_client", return_value=mock_r2),
+        patch("app.modules.rag.tasks.index_lesson"),
+    ):
         resp = await client.patch(
             f"/api/v1/lessons/{lesson.id}/transcript",
             json={"plain_text": "Corrected transcript text."},
@@ -338,17 +340,19 @@ async def test_generate_transcript_task_stores_transcript(
     mock_r2 = MagicMock()
 
     with (
-        patch("app.modules.video.tasks.subprocess.run"),  # skip actual ffmpeg
-        patch("app.modules.video.tasks.openai.OpenAI") as mock_openai_cls,
-        patch("app.modules.video.tasks.get_r2_client", return_value=mock_r2),
+        patch("subprocess.run"),  # skip actual ffmpeg
+        patch("openai.OpenAI") as mock_openai_cls,
+        patch("app.core.storage.get_r2_client", return_value=mock_r2),
+        patch("app.modules.rag.tasks.index_lesson"),
     ):
         mock_openai_cls.return_value.audio.transcriptions.create.return_value = whisper_response
 
-        generate_transcript.apply(args=[str(lesson.id)])
+        lesson_id = lesson.id
+        generate_transcript.apply(args=[str(lesson_id)])
 
-    await db.expire_all()
+    db.expire_all()
     row = (await db.execute(
-        select(LessonTranscript).where(LessonTranscript.lesson_id == lesson.id)
+        select(LessonTranscript).where(LessonTranscript.lesson_id == lesson_id)
     )).scalar_one_or_none()
 
     assert row is not None

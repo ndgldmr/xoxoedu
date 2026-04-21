@@ -35,6 +35,7 @@ from app.modules.courses.schemas import (
     ChapterUpdateIn,
     CourseCreateIn,
     CourseDetail,
+    CourseListItem,
     CourseUpdateIn,
     LessonCreateIn,
     LessonOut,
@@ -86,6 +87,39 @@ async def delete_user(
 
 
 # ── Courses ────────────────────────────────────────────────────────────────────
+
+@router.get("/courses")
+async def list_courses_admin(
+    db: AsyncSession = Depends(get_db),
+    status: str | None = Query(None, description="Filter by status: draft | published | archived"),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+) -> dict:
+    """List all courses regardless of status, with an optional status filter.
+
+    Unlike the public ``GET /courses`` endpoint, this returns draft and archived
+    courses so admins can manage the full course catalogue.
+    """
+    courses, total = await course_service.list_all_courses(db, status, skip, limit)
+    return ok(
+        [CourseListItem.model_validate(c).model_dump() for c in courses],
+        meta={"total": total, "skip": skip, "limit": limit},
+    )
+
+
+@router.get("/courses/{course_id}")
+async def get_course_admin(
+    course_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    """Fetch any course by UUID, regardless of status.
+
+    Used by the admin course settings page, which navigates by UUID rather than
+    slug so draft courses (which may have no published slug yet) are accessible.
+    """
+    course = await course_service.get_course_by_id(db, course_id)
+    return ok(CourseDetail.model_validate(course).model_dump())
+
 
 @router.post("/courses", status_code=201)
 async def create_course(
@@ -172,6 +206,9 @@ async def create_lesson(
 ) -> dict:
     """Append a new lesson to a chapter, auto-assigning the next position."""
     lesson = await course_service.create_lesson(db, chapter_id, body)
+    if lesson.type == "text" and lesson.content:
+        from app.modules.rag.tasks import index_lesson
+        index_lesson.delay(str(lesson.id))
     return ok(LessonOut.model_validate(lesson).model_dump())
 
 
@@ -183,6 +220,10 @@ async def update_lesson(
 ) -> dict:
     """Partially update a lesson's content or metadata."""
     lesson = await course_service.update_lesson(db, lesson_id, body)
+    # Re-index only when the content body itself changed — not for title/lock patches.
+    if lesson.type == "text" and body.content is not None:
+        from app.modules.rag.tasks import index_lesson
+        index_lesson.delay(str(lesson.id))
     return ok(LessonOut.model_validate(lesson).model_dump())
 
 

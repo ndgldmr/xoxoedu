@@ -6,7 +6,7 @@ from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
-from app.db.models.user import User, UserProfile
+from app.db.models.user import User
 
 
 async def _create_verified_user(db: AsyncSession, email: str, password: str) -> User:
@@ -16,10 +16,9 @@ async def _create_verified_user(db: AsyncSession, email: str, password: str) -> 
         password_hash=hash_password(password),
         role="student",
         email_verified=True,
+        display_name="Test User",
     )
     db.add(user)
-    await db.flush()
-    db.add(UserProfile(user_id=user.id, display_name="Test User"))
     await db.commit()
     await db.refresh(user)
     return user
