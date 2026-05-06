@@ -83,4 +83,4 @@ async def test_reset_password_invalid_token(client: AsyncClient) -> None:
         "/api/v1/auth/reset-password/invalid-token",
         json={"password": "newpass456"},
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 401

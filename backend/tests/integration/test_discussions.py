@@ -528,7 +528,7 @@ async def test_delete_already_deleted_post_returns_403(
     assert resp.json()["error"]["code"] == "DISCUSSION_POST_FORBIDDEN"
 
 
-# ── POST /discussions/{id}/upvote ──────────────────────────────────────────────
+# ── PUT/DELETE /discussions/{id}/upvote ───────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_upvote_adds_vote_and_returns_count(
@@ -540,7 +540,7 @@ async def test_upvote_adds_vote_and_returns_count(
     await _make_enrollment(db, student.id, course.id)
     post = await _make_post(db, lesson.id, admin_id, "Upvotable post")
 
-    resp = await client.post(
+    resp = await client.put(
         f"/api/v1/discussions/{post.id}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -552,23 +552,22 @@ async def test_upvote_adds_vote_and_returns_count(
 
 
 @pytest.mark.asyncio
-async def test_upvote_toggle_removes_vote(
+async def test_upvote_delete_removes_vote(
     client: AsyncClient, db: AsyncSession
 ) -> None:
-    """A second upvote call on the same post removes the vote (toggle off)."""
+    """Deleting an upvote removes the vote and is reflected in the response."""
     course, lesson, admin_id = await _setup_lesson(db)
     student, token = await _make_user(db, f"vote-s2-{uuid.uuid4().hex[:6]}@example.com")
     await _make_enrollment(db, student.id, course.id)
     post = await _make_post(db, lesson.id, admin_id, "Toggle post")
 
     # Vote on
-    await client.post(
+    await client.put(
         f"/api/v1/discussions/{post.id}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    # Vote off
-    resp = await client.post(
+    resp = await client.delete(
         f"/api/v1/discussions/{post.id}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -589,7 +588,7 @@ async def test_author_cannot_upvote_own_post(
     await _make_enrollment(db, student.id, course.id)
     own_post = await _make_post(db, lesson.id, student.id, "My own post")
 
-    resp = await client.post(
+    resp = await client.put(
         f"/api/v1/discussions/{own_post.id}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -611,7 +610,7 @@ async def test_vote_counts_returned_in_thread_listing(
     post_b = await _make_post(db, lesson.id, admin_id, "Post B")
 
     # Student upvotes only post_a
-    await client.post(
+    await client.put(
         f"/api/v1/discussions/{post_a.id}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -640,7 +639,7 @@ async def test_upvote_nonexistent_post_returns_404(
     """Upvoting a post that does not exist returns 404."""
     _, token = await _make_user(db, f"vote-404-{uuid.uuid4().hex[:6]}@example.com")
 
-    resp = await client.post(
+    resp = await client.put(
         f"/api/v1/discussions/{uuid.uuid4()}/upvote",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -649,7 +648,7 @@ async def test_upvote_nonexistent_post_returns_404(
     assert resp.json()["error"]["code"] == "DISCUSSION_POST_NOT_FOUND"
 
 
-# ── POST /discussions/{id}/flag ────────────────────────────────────────────────
+# ── POST /discussions/{id}/flags ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_flag_post_creates_flag_in_queue(
@@ -664,7 +663,7 @@ async def test_flag_post_creates_flag_in_queue(
     other_post = await _make_post(db, lesson.id, admin_id, "Flaggable post")
 
     flag_resp = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "spam"},
         headers={"Authorization": f"Bearer {student_token}"},
     )
@@ -676,7 +675,7 @@ async def test_flag_post_creates_flag_in_queue(
 
     # Appears in admin queue
     queue_resp = await client.get(
-        "/api/v1/admin/moderation/flags",
+        "/api/v1/admin/discussions/flags",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert queue_resp.status_code == 200
@@ -696,7 +695,7 @@ async def test_duplicate_flag_updates_existing_open_flag(
 
     # First flag
     r1 = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "spam"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -705,7 +704,7 @@ async def test_duplicate_flag_updates_existing_open_flag(
 
     # Second flag (should update, not create a new one)
     r2 = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "harassment", "context": "Updated context"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -729,7 +728,7 @@ async def test_author_cannot_flag_own_post(
     own_post = await _make_post(db, lesson.id, student.id, "My own post")
 
     resp = await client.post(
-        f"/api/v1/discussions/{own_post.id}/flag",
+        f"/api/v1/discussions/{own_post.id}/flags",
         json={"reason": "spam"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -738,7 +737,7 @@ async def test_author_cannot_flag_own_post(
     assert resp.json()["error"]["code"] == "CANNOT_FLAG_OWN_POST"
 
 
-# ── GET /admin/moderation/flags ────────────────────────────────────────────────
+# ── GET /admin/discussions/flags ───────────────────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_admin_moderation_queue_returns_open_flags_by_default(
@@ -753,13 +752,13 @@ async def test_admin_moderation_queue_returns_open_flags_by_default(
 
     # Create a flag
     await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "off_topic"},
         headers={"Authorization": f"Bearer {student_token}"},
     )
 
     resp = await client.get(
-        "/api/v1/admin/moderation/flags",
+        "/api/v1/admin/discussions/flags",
         headers={"Authorization": f"Bearer {admin_token}"},
     )
     assert resp.status_code == 200
@@ -778,13 +777,13 @@ async def test_student_cannot_access_moderation_queue(
     _, token = await _make_user(db, f"queue-403-{uuid.uuid4().hex[:6]}@example.com")
 
     resp = await client.get(
-        "/api/v1/admin/moderation/flags",
+        "/api/v1/admin/discussions/flags",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
 
 
-# ── POST /admin/moderation/flags/{id}/resolve ──────────────────────────────────
+# ── POST /admin/discussions/flags/{id}/resolve ─────────────────────────────────
 
 @pytest.mark.asyncio
 async def test_admin_resolves_flag_updates_queue_status(
@@ -799,7 +798,7 @@ async def test_admin_resolves_flag_updates_queue_status(
 
     # Create the flag
     flag_resp = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "spam"},
         headers={"Authorization": f"Bearer {student_token}"},
     )
@@ -807,7 +806,7 @@ async def test_admin_resolves_flag_updates_queue_status(
 
     # Resolve it
     resolve_resp = await client.post(
-        f"/api/v1/admin/moderation/flags/{flag_id}/resolve",
+        f"/api/v1/admin/discussions/flags/{flag_id}/resolve",
         json={"outcome": "dismissed", "resolution_note": "Not actually spam"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -831,14 +830,14 @@ async def test_resolve_with_content_removed_soft_deletes_post(
     other_post = await _make_post(db, lesson.id, admin_id, "Content to be removed")
 
     flag_resp = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "harassment"},
         headers={"Authorization": f"Bearer {student_token}"},
     )
     flag_id = flag_resp.json()["data"]["id"]
 
     await client.post(
-        f"/api/v1/admin/moderation/flags/{flag_id}/resolve",
+        f"/api/v1/admin/discussions/flags/{flag_id}/resolve",
         json={"outcome": "content_removed"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
@@ -866,7 +865,7 @@ async def test_resolve_already_resolved_flag_returns_409(
     other_post = await _make_post(db, lesson.id, admin_id, "Post with double-resolve attempt")
 
     flag_resp = await client.post(
-        f"/api/v1/discussions/{other_post.id}/flag",
+        f"/api/v1/discussions/{other_post.id}/flags",
         json={"reason": "spam"},
         headers={"Authorization": f"Bearer {student_token}"},
     )
@@ -874,14 +873,14 @@ async def test_resolve_already_resolved_flag_returns_409(
 
     # First resolution
     await client.post(
-        f"/api/v1/admin/moderation/flags/{flag_id}/resolve",
+        f"/api/v1/admin/discussions/flags/{flag_id}/resolve",
         json={"outcome": "warned"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )
 
     # Second resolution — should conflict
     resp = await client.post(
-        f"/api/v1/admin/moderation/flags/{flag_id}/resolve",
+        f"/api/v1/admin/discussions/flags/{flag_id}/resolve",
         json={"outcome": "dismissed"},
         headers={"Authorization": f"Bearer {admin_token}"},
     )

@@ -16,6 +16,7 @@ from app.db.models.assignment import Assignment, AssignmentSubmission
 from app.modules.assignments.schemas import (
     AssignmentIn,
     AssignmentOut,
+    AssignmentUpdateIn,
     SubmissionOut,
     UploadResponseOut,
 )
@@ -89,6 +90,43 @@ async def create_assignment(db: AsyncSession, data: AssignmentIn) -> AssignmentO
         allowed_extensions=data.allowed_extensions,
     )
     db.add(assignment)
+    await db.commit()
+    await db.refresh(assignment)
+    return AssignmentOut.model_validate(assignment)
+
+
+async def update_assignment(
+    db: AsyncSession, assignment_id: uuid.UUID, data: AssignmentUpdateIn
+) -> AssignmentOut:
+    """Partially update an existing assignment.
+
+    Only the fields explicitly included in the request body are written;
+    omitted fields retain their current database values.  Uses Pydantic's
+    ``model_fields_set`` to distinguish between "field was not provided" and
+    "field was explicitly set to ``None``".
+
+    Args:
+        db: Active async database session.
+        assignment_id: UUID of the assignment to update.
+        data: Validated ``AssignmentUpdateIn`` payload from the request.
+
+    Returns:
+        The updated ``AssignmentOut``.
+
+    Raises:
+        AssignmentNotFound: When no assignment with ``assignment_id`` exists.
+    """
+    assignment = await _get_assignment(db, assignment_id)
+
+    if "title" in data.model_fields_set and data.title is not None:
+        assignment.title = data.title
+    if "instructions" in data.model_fields_set and data.instructions is not None:
+        assignment.instructions = data.instructions
+    if "max_file_size_bytes" in data.model_fields_set and data.max_file_size_bytes is not None:
+        assignment.max_file_size_bytes = data.max_file_size_bytes
+    if "allowed_extensions" in data.model_fields_set:
+        assignment.allowed_extensions = data.allowed_extensions if data.allowed_extensions is not None else []
+
     await db.commit()
     await db.refresh(assignment)
     return AssignmentOut.model_validate(assignment)

@@ -30,7 +30,7 @@ async def generate_certificate(
     return ok(CertificateOut.model_validate(cert).model_dump())
 
 
-@router.get("/certificates")
+@router.get("/users/me/certificates")
 async def list_certificates(
     db: AsyncSession = Depends(get_db),
     current_user: User = require_role(Role.STUDENT),
@@ -40,7 +40,7 @@ async def list_certificates(
     return ok([c.model_dump() for c in certs])
 
 
-@router.get("/verify/{token}")
+@router.get("/certificates/verify/{token}")
 async def verify_certificate(
     token: str,
     db: AsyncSession = Depends(get_db),
@@ -50,7 +50,7 @@ async def verify_certificate(
     return ok(VerifyResponse.model_validate(result).model_dump())
 
 
-@router.post("/certificate-requests", status_code=201)
+@router.post("/certificates/requests", status_code=201)
 async def create_certificate_request(
     course_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),

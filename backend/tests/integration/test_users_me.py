@@ -1,4 +1,5 @@
 import uuid
+from datetime import date
 
 import pytest
 from httpx import AsyncClient
@@ -16,6 +17,10 @@ async def _make_user_and_token(db: AsyncSession, email: str) -> tuple[User, str]
         role="student",
         email_verified=True,
         display_name="Test User",
+        avatar_url="https://cdn.example.com/avatar.png",
+        date_of_birth=date(2000, 1, 2),
+        country="BR",
+        gender="female",
     )
     db.add(user)
     await db.commit()
@@ -32,12 +37,13 @@ async def test_get_me(client: AsyncClient, db: AsyncSession) -> None:
     data = resp.json()["data"]
     assert data["email"] == "me@example.com"
     assert data["display_name"] == "Test User"
+    assert data["profile_complete"] is True
 
 
 @pytest.mark.asyncio
 async def test_get_me_unauthenticated(client: AsyncClient) -> None:
     resp = await client.get("/api/v1/users/me")
-    assert resp.status_code == 400
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -45,13 +51,34 @@ async def test_patch_me(client: AsyncClient, db: AsyncSession) -> None:
     user, token = await _make_user_and_token(db, "patch@example.com")
     resp = await client.patch(
         "/api/v1/users/me",
-        json={"display_name": "Updated Name", "bio": "My bio"},
+        json={
+            "display_name": "Updated Name",
+            "bio": "My bio",
+            "social_links": {"website": "https://example.com"},
+        },
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["display_name"] == "Updated Name"
     assert data["bio"] == "My bio"
+    assert data["social_links"]["website"] == "https://example.com/"
+
+
+@pytest.mark.asyncio
+async def test_get_me_normalizes_legacy_gender_values(client: AsyncClient, db: AsyncSession) -> None:
+    user, token = await _make_user_and_token(db, "legacy-gender@example.com")
+    user.gender = "self_describe"
+    user.gender_self_describe = "Agender"
+    await db.commit()
+    await db.refresh(user)
+
+    resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["gender"] == "other"
+    assert data["gender_self_describe"] is None
+    assert data["profile_complete"] is True
 
 
 @pytest.mark.asyncio

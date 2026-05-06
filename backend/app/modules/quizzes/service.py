@@ -2,7 +2,7 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,6 +18,7 @@ from app.modules.quizzes.schemas import (
     QuizOut,
     QuizQuestionOut,
     QuizSubmissionOut,
+    QuizUpdateIn,
     SubmitQuizIn,
 )
 
@@ -184,15 +185,21 @@ async def create_quiz(db: AsyncSession, data: QuizIn) -> QuizOut:
     )
 
 
-async def get_quiz_by_lesson(db: AsyncSession, lesson_id: uuid.UUID) -> QuizOut:
-    """Return the quiz attached to a lesson (answers masked).
+async def get_quiz_by_lesson(
+    db: AsyncSession, lesson_id: uuid.UUID, *, reveal: bool = False
+) -> QuizOut:
+    """Return the quiz attached to a lesson.
 
     Args:
         db: Active async database session.
         lesson_id: UUID of the lesson whose quiz is requested.
+        reveal: When ``True`` correct answers are included in the response.
+            Student-facing callers must always pass the default ``False``.
+            Admin-facing callers pass ``True`` so the editor can display the
+            current correct-answer selections.
 
     Returns:
-        A ``QuizOut`` with questions and correct answers masked.
+        A ``QuizOut`` with questions; correct answers masked unless ``reveal=True``.
 
     Raises:
         QuizNotFound: When no quiz exists for ``lesson_id``.
@@ -212,7 +219,77 @@ async def get_quiz_by_lesson(db: AsyncSession, lesson_id: uuid.UUID) -> QuizOut:
         description=quiz.description,
         max_attempts=quiz.max_attempts,
         time_limit_minutes=quiz.time_limit_minutes,
-        questions=[_build_question_out(q, reveal=False) for q in quiz.questions],
+        questions=[_build_question_out(q, reveal=reveal) for q in quiz.questions],
+    )
+
+
+async def update_quiz(
+    db: AsyncSession, quiz_id: uuid.UUID, data: QuizUpdateIn
+) -> QuizOut:
+    """Replace a quiz's metadata and question set in a single transaction.
+
+    All existing questions are deleted and the new list from ``data`` is
+    inserted.  This full-replacement strategy keeps the service simple and
+    matches the admin editor's save-all behaviour.
+
+    Note: this operation does not guard against quizzes that already have
+    student submissions.  That check should be added before allowing edits on
+    live quizzes in a production hardening pass.
+
+    Args:
+        db: Active async database session.
+        quiz_id: UUID of the quiz to update.
+        data: Validated ``QuizUpdateIn`` payload from the request.
+
+    Returns:
+        A ``QuizOut`` with the updated quiz and correct answers revealed
+        (so the admin editor can reflect the saved state immediately).
+
+    Raises:
+        QuizNotFound: When no quiz with ``quiz_id`` exists.
+    """
+    quiz = await _load_quiz(db, quiz_id)
+
+    quiz.title = data.title
+    quiz.description = data.description
+    quiz.max_attempts = data.max_attempts
+    quiz.time_limit_minutes = data.time_limit_minutes
+
+    # Full replacement: delete all existing questions, then insert the new set.
+    await db.execute(delete(QuizQuestion).where(QuizQuestion.quiz_id == quiz.id))
+
+    for q_in in data.questions:
+        db.add(
+            QuizQuestion(
+                quiz_id=quiz.id,
+                position=q_in.position,
+                kind=q_in.kind,
+                stem=q_in.stem,
+                options=[opt.model_dump() for opt in q_in.options],
+                correct_answers=q_in.correct_answers,
+                points=q_in.points,
+            )
+        )
+
+    await db.commit()
+
+    # Expire the quiz so the session does not return a stale questions collection.
+    # Without this, sessions configured with expire_on_commit=False would serve
+    # the pre-delete relationship from the identity map instead of re-querying.
+    # Use quiz_id (the parameter) rather than quiz.id to avoid triggering a
+    # lazy-load on the expired instance in an async context.
+    db.expire(quiz)
+
+    # Re-load after commit so the relationship reflects the new question rows.
+    updated = await _load_quiz(db, quiz_id)
+    return QuizOut(
+        id=updated.id,
+        lesson_id=updated.lesson_id,
+        title=updated.title,
+        description=updated.description,
+        max_attempts=updated.max_attempts,
+        time_limit_minutes=updated.time_limit_minutes,
+        questions=[_build_question_out(q, reveal=True) for q in updated.questions],
     )
 
 

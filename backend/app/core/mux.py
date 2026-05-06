@@ -21,7 +21,7 @@ def _auth() -> tuple[str, str]:
     return (settings.MUX_TOKEN_ID, settings.MUX_TOKEN_SECRET)
 
 
-def create_upload(cors_origin: str = "*") -> tuple[str, str]:
+async def create_upload(cors_origin: str = "*") -> tuple[str, str]:
     """Create a Mux direct upload and return ``(upload_url, upload_id)``.
 
     The caller should redirect the client to PUT the video file directly to
@@ -41,18 +41,19 @@ def create_upload(cors_origin: str = "*") -> tuple[str, str]:
     Raises:
         httpx.HTTPStatusError: When Mux returns a non-2xx response.
     """
-    response = httpx.post(
-        f"{_MUX_API_BASE}/video/v1/uploads",
-        auth=_auth(),
-        json={
-            "cors_origin": cors_origin,
-            "new_asset_settings": {
-                "playback_policy": ["public"],
-                "mp4_support": "standard",
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            f"{_MUX_API_BASE}/video/v1/uploads",
+            auth=_auth(),
+            json={
+                "cors_origin": cors_origin,
+                "new_asset_settings": {
+                    "playback_policy": ["public"],
+                    "mp4_support": "capped-1080p",
+                },
             },
-        },
-        timeout=10,
-    )
+            timeout=10,
+        )
     response.raise_for_status()
     data = response.json()["data"]
     upload_url: str = data["url"]

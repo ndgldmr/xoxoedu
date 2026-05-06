@@ -114,6 +114,8 @@ class AdminSubmissionOut(BaseModel):
     Attributes:
         id: Submission UUID.
         assignment_id: The assignment this submission belongs to.
+        assignment_title: Display name of the assignment (populated by service).
+        lesson_title: Title of the parent lesson (populated by service).
         user_id: The student who submitted.
         user_email: Student's email address (populated by service).
         file_name: Original filename.
@@ -132,6 +134,8 @@ class AdminSubmissionOut(BaseModel):
 
     id: uuid.UUID
     assignment_id: uuid.UUID
+    assignment_title: str | None = None
+    lesson_title: str | None = None
     user_id: uuid.UUID
     user_email: str | None = None
     file_name: str
@@ -148,6 +152,20 @@ class AdminSubmissionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class AdminSubmissionDetailOut(AdminSubmissionOut):
+    """Extended submission representation for the admin grading detail view.
+
+    Extends ``AdminSubmissionOut`` with a short-lived presigned download URL
+    so the grader can retrieve the submitted file without a separate backend call.
+
+    Attributes:
+        download_url: Presigned R2 GET URL valid for 5 minutes; ``None`` when
+            the storage call fails (e.g. in test environments without real R2).
+    """
+
+    download_url: str | None = None
 
 
 # ── Analytics ──────────────────────────────────────────────────────────────────
@@ -242,3 +260,25 @@ class AnnouncementOut(BaseModel):
     sent_at: datetime | None
 
     model_config = {"from_attributes": True}
+
+
+# ── Content image upload ────────────────────────────────────────────────────────
+
+class ContentImageUploadIn(BaseModel):
+    """Payload for ``POST /admin/lessons/{lesson_id}/images/upload-url``."""
+
+    filename: str
+    content_type: str
+
+
+class ContentImageUploadOut(BaseModel):
+    """Response schema for a content image upload URL request.
+
+    Attributes:
+        upload_url: Presigned R2 PUT URL valid for 5 minutes.  The client
+            should PUT the raw file bytes to this URL directly.
+        public_url: Permanent public URL to embed in the lesson HTML body.
+    """
+
+    upload_url: str
+    public_url: str

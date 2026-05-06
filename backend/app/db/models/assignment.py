@@ -58,7 +58,7 @@ class AssignmentSubmission(Base, UUIDMixin, TimestampMixin):
     completes the student calls ``POST /confirm`` to stamp ``submitted_at``.
 
     ``scan_status`` defaults to ``"pending"`` as a placeholder.  Actual
-    virus scanning is wired in Sprint 12.
+    virus scanning is wired in Sprint 12B.
 
     Attributes:
         user_id: FK to the submitting student; cascades on user delete.

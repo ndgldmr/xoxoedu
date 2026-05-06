@@ -570,6 +570,26 @@ async def delete_lesson(db: AsyncSession, lesson_id: uuid.UUID) -> None:
     await db.commit()
 
 
+async def delete_resource(db: AsyncSession, resource_id: uuid.UUID) -> None:
+    """Delete a single lesson resource by ID.
+
+    Args:
+        db: Async database session.
+        resource_id: UUID of the resource to delete.
+
+    Raises:
+        ResourceNotFound: If the resource does not exist.
+    """
+    from app.core.exceptions import ResourceNotFound
+    from app.db.models.course import LessonResource
+
+    resource = await db.get(LessonResource, resource_id)
+    if not resource:
+        raise ResourceNotFound()
+    await db.delete(resource)
+    await db.commit()
+
+
 async def reorder_lessons(
     db: AsyncSession, chapter_id: uuid.UUID, lesson_ids: list[uuid.UUID]
 ) -> list[Lesson]:

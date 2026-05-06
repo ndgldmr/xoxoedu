@@ -49,6 +49,10 @@ class NotificationPrefsPatchIn(BaseModel):
     mention: ChannelPreferencePatch | None = None
     grade_published: ChannelPreferencePatch | None = None
     certificate_issued: ChannelPreferencePatch | None = None
+    live_session_reminder: ChannelPreferencePatch | None = None
+    payment_due_soon: ChannelPreferencePatch | None = None
+    payment_processed: ChannelPreferencePatch | None = None
+    payment_failed: ChannelPreferencePatch | None = None
 
 
 class NotificationPrefsOut(BaseModel):
@@ -58,3 +62,7 @@ class NotificationPrefsOut(BaseModel):
     mention: ChannelPreferenceOut
     grade_published: ChannelPreferenceOut
     certificate_issued: ChannelPreferenceOut
+    live_session_reminder: ChannelPreferenceOut
+    payment_due_soon: ChannelPreferenceOut
+    payment_processed: ChannelPreferenceOut
+    payment_failed: ChannelPreferenceOut

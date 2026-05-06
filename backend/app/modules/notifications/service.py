@@ -5,7 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 import sqlalchemy as sa
@@ -43,6 +43,8 @@ if TYPE_CHECKING:
 _BODY_PREVIEW_LIMIT = 160
 _DELIVERY_ERROR_LIMIT = 1000
 _SYSTEM_ACTOR = "XOXO Education"
+_BILLING_TARGET_URL = "/home/account"
+_BILLING_REMINDER_LEAD_DAYS = 3
 
 
 def encode_cursor(created_at: datetime, notification_id: uuid.UUID) -> str:
@@ -92,6 +94,34 @@ def _prefs_row_to_out(row: NotificationPreference | None) -> ChannelPreferenceOu
 def _truncate_error(exc: Exception) -> str:
     """Return a bounded error string safe to store in delivery rows."""
     return f"{type(exc).__name__}: {exc}"[:_DELIVERY_ERROR_LIMIT]
+
+
+def _format_money(amount_cents: int, currency: str) -> str:
+    """Return a stable money string suitable for notification copy."""
+    return f"{currency.upper()} {amount_cents / 100:.2f}"
+
+
+def billing_reminder_target_date(today: date) -> date:
+    """Return the due date that qualifies for the next reminder batch."""
+    return today + timedelta(days=_BILLING_REMINDER_LEAD_DAYS)
+
+
+def billing_reminder_eligible(
+    *,
+    cycle_status: str,
+    due_date: date,
+    reminder_sent_at: datetime | None,
+    subscription_status: str | None,
+    today: date,
+) -> bool:
+    """Return whether a billing cycle should receive a due-soon reminder."""
+    if cycle_status != "pending":
+        return False
+    if reminder_sent_at is not None:
+        return False
+    if subscription_status in {None, "canceled"}:
+        return False
+    return due_date == billing_reminder_target_date(today)
 
 
 async def email_delivery_enabled(
@@ -203,6 +233,30 @@ async def dispatch_notification_delivery(
             "Failed to publish realtime notification",
             extra={"notification_id": str(notification_id)},
         )
+
+
+async def commit_notification_and_dispatch(
+    db: AsyncSession,
+    *,
+    notification: Notification,
+    redis: aioredis.Redis | None = None,
+) -> None:
+    """Persist a staged notification and trigger its delivery side effects."""
+    db.add(notification)
+    await db.flush()
+    notification_id = notification.id
+    recipient_id = notification.recipient_id
+    notification_type = notification.type
+    notification_out = notification_to_out(notification)
+    await db.commit()
+    await dispatch_notification_delivery(
+        db,
+        notification_id=notification_id,
+        recipient_id=recipient_id,
+        notification_type=notification_type,
+        notification_out=notification_out,
+        redis=redis,
+    )
 
 
 def merge_channel_preferences(
@@ -319,6 +373,101 @@ def build_certificate_issued_notification(
     )
 
 
+def build_payment_due_soon_notification(
+    *,
+    recipient_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    billing_cycle_id: uuid.UUID,
+    due_date: date,
+    amount_cents: int,
+    currency: str,
+    provider_invoice_id: str | None,
+) -> Notification:
+    """Construct a persisted notification for a billing-cycle due reminder."""
+    amount_label = _format_money(amount_cents, currency)
+    return Notification(
+        recipient_id=recipient_id,
+        type=NotificationType.PAYMENT_DUE_SOON.value,
+        title="Payment due in 3 days",
+        body=f"Your subscription payment of {amount_label} is due on {due_date.isoformat()}.",
+        actor_summary=_SYSTEM_ACTOR,
+        target_url=_BILLING_TARGET_URL,
+        event_metadata={
+            "subscription_id": str(subscription_id),
+            "billing_cycle_id": str(billing_cycle_id),
+            "provider_invoice_id": provider_invoice_id,
+            "provider_transaction_id": None,
+            "due_date": due_date.isoformat(),
+            "amount_cents": amount_cents,
+            "currency": currency.upper(),
+        },
+    )
+
+
+def build_payment_processed_notification(
+    *,
+    recipient_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    billing_cycle_id: uuid.UUID,
+    due_date: date,
+    amount_cents: int,
+    currency: str,
+    provider_invoice_id: str | None,
+    provider_transaction_id: str | None,
+) -> Notification:
+    """Construct a persisted notification for a successful billing event."""
+    amount_label = _format_money(amount_cents, currency)
+    return Notification(
+        recipient_id=recipient_id,
+        type=NotificationType.PAYMENT_PROCESSED.value,
+        title="Payment processed",
+        body=f"We processed your subscription payment of {amount_label}.",
+        actor_summary=_SYSTEM_ACTOR,
+        target_url=_BILLING_TARGET_URL,
+        event_metadata={
+            "subscription_id": str(subscription_id),
+            "billing_cycle_id": str(billing_cycle_id),
+            "provider_invoice_id": provider_invoice_id,
+            "provider_transaction_id": provider_transaction_id,
+            "due_date": due_date.isoformat(),
+            "amount_cents": amount_cents,
+            "currency": currency.upper(),
+        },
+    )
+
+
+def build_payment_failed_notification(
+    *,
+    recipient_id: uuid.UUID,
+    subscription_id: uuid.UUID,
+    billing_cycle_id: uuid.UUID,
+    due_date: date,
+    amount_cents: int,
+    currency: str,
+    provider_invoice_id: str | None,
+    provider_transaction_id: str | None,
+) -> Notification:
+    """Construct a persisted notification for a failed billing event."""
+    amount_label = _format_money(amount_cents, currency)
+    return Notification(
+        recipient_id=recipient_id,
+        type=NotificationType.PAYMENT_FAILED.value,
+        title="Payment failed",
+        body=f"We could not process your subscription payment of {amount_label}.",
+        actor_summary=_SYSTEM_ACTOR,
+        target_url=_BILLING_TARGET_URL,
+        event_metadata={
+            "subscription_id": str(subscription_id),
+            "billing_cycle_id": str(billing_cycle_id),
+            "provider_invoice_id": provider_invoice_id,
+            "provider_transaction_id": provider_transaction_id,
+            "due_date": due_date.isoformat(),
+            "amount_cents": amount_cents,
+            "currency": currency.upper(),
+        },
+    )
+
+
 def notification_to_out(notification: Notification) -> NotificationOut:
     """Convert an ORM notification row to the public API schema."""
     return NotificationOut(
@@ -428,6 +577,18 @@ async def get_preferences(db: AsyncSession, *, user_id: uuid.UUID) -> Notificati
         grade_published=_prefs_row_to_out(by_type.get(NotificationType.GRADE_PUBLISHED.value)),
         certificate_issued=_prefs_row_to_out(
             by_type.get(NotificationType.CERTIFICATE_ISSUED.value)
+        ),
+        live_session_reminder=_prefs_row_to_out(
+            by_type.get(NotificationType.LIVE_SESSION_REMINDER.value)
+        ),
+        payment_due_soon=_prefs_row_to_out(
+            by_type.get(NotificationType.PAYMENT_DUE_SOON.value)
+        ),
+        payment_processed=_prefs_row_to_out(
+            by_type.get(NotificationType.PAYMENT_PROCESSED.value)
+        ),
+        payment_failed=_prefs_row_to_out(
+            by_type.get(NotificationType.PAYMENT_FAILED.value)
         ),
     )
 

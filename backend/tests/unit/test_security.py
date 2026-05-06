@@ -38,13 +38,13 @@ def test_access_token_contains_jti() -> None:
 
 
 def test_expired_access_token_raises() -> None:
-    from app.core.exceptions import TokenInvalid
+    from app.core.exceptions import TokenExpired
 
     with freeze_time("2020-01-01"):
         token = create_access_token("user-id-123", "student")
 
     # Token issued in 2020, decode in 2026 — definitely expired
-    with pytest.raises(TokenInvalid):
+    with pytest.raises(TokenExpired):
         decode_access_token(token)
 
 

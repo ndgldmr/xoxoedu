@@ -1,7 +1,7 @@
 """Unit tests for notification builders, preference helpers, and email tasks."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 import pytest
 from pydantic import ValidationError
@@ -14,7 +14,9 @@ from app.modules.notifications.schemas import (
     NotificationOut,
 )
 from app.modules.notifications.service import (
+    billing_reminder_eligible,
     build_discussion_reply_notification,
+    build_payment_due_soon_notification,
     merge_channel_preferences,
 )
 from app.modules.notifications.tasks import _render_notification_email
@@ -55,6 +57,25 @@ def test_build_discussion_reply_notification() -> None:
     assert notification.body.startswith("Thanks for the detailed explanation")
     assert notification.target_url == f"/lessons/{lesson_id}/discussions?post_id={parent_post_id}"
     assert notification.event_metadata["post_id"] == str(reply_post_id)
+
+
+def test_build_payment_due_soon_notification() -> None:
+    notification = build_payment_due_soon_notification(
+        recipient_id=uuid.uuid4(),
+        subscription_id=uuid.uuid4(),
+        billing_cycle_id=uuid.uuid4(),
+        due_date=date(2026, 5, 1),
+        amount_cents=1499,
+        currency="eur",
+        provider_invoice_id="in_test_123",
+    )
+
+    assert notification.type == NotificationType.PAYMENT_DUE_SOON.value
+    assert notification.title == "Payment due in 3 days"
+    assert "EUR 14.99" in notification.body
+    assert notification.target_url == "/home/account"
+    assert notification.event_metadata["provider_invoice_id"] == "in_test_123"
+    assert notification.event_metadata["currency"] == "EUR"
 
 
 def test_notification_out_rejects_invalid_enum_value() -> None:
@@ -167,6 +188,37 @@ def test_render_certificate_issued_email_contains_cta() -> None:
     assert "https://app.xoxoedu.com/certificates/789" in html
 
 
+def test_render_payment_due_soon_email_contains_billing_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="payment_due_soon",
+        title="Payment due in 3 days",
+        body="Your subscription payment of BRL 10.00 is due on 2026-05-01.",
+        target_url="/home/account",
+        actor_summary="XOXO Education",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "Payment due in 3 days" in subject
+    assert "BRL 10.00" in html
+    assert "View Billing" in html
+    assert 'href="https://app.xoxoedu.com/home/account"' in html
+
+
+def test_render_payment_failed_email_contains_billing_cta() -> None:
+    subject, html = _render_notification_email(
+        notification_type="payment_failed",
+        title="Payment failed",
+        body="We could not process your subscription payment of CAD 10.00.",
+        target_url="/home/account",
+        actor_summary="XOXO Education",
+        frontend_url="https://app.xoxoedu.com",
+    )
+
+    assert "Payment failed" in subject
+    assert "CAD 10.00" in html
+    assert "View Billing" in html
+
+
 # ── Email preference gating ────────────────────────────────────────────────────
 
 
@@ -184,3 +236,38 @@ def test_render_unknown_notification_type_falls_back_to_title() -> None:
     assert subject == "Something happened"
     assert "Details here." in html
     assert "View" in html  # generic CTA label
+
+
+def test_billing_reminder_eligible_only_for_pending_due_soon_cycle() -> None:
+    assert billing_reminder_eligible(
+        cycle_status="pending",
+        due_date=date(2026, 5, 1),
+        reminder_sent_at=None,
+        subscription_status="active",
+        today=date(2026, 4, 28),
+    ) is True
+
+
+@pytest.mark.parametrize(
+    ("cycle_status", "due_date", "reminder_sent_at", "subscription_status"),
+    [
+        ("paid", date(2026, 5, 1), None, "active"),
+        ("failed", date(2026, 5, 1), None, "active"),
+        ("pending", date(2026, 5, 2), None, "active"),
+        ("pending", date(2026, 5, 1), datetime(2026, 4, 28, tzinfo=UTC), "active"),
+        ("pending", date(2026, 5, 1), None, "canceled"),
+    ],
+)
+def test_billing_reminder_eligible_skip_rules(
+    cycle_status: str,
+    due_date: date,
+    reminder_sent_at: datetime | None,
+    subscription_status: str,
+) -> None:
+    assert billing_reminder_eligible(
+        cycle_status=cycle_status,
+        due_date=due_date,
+        reminder_sent_at=reminder_sent_at,
+        subscription_status=subscription_status,
+        today=date(2026, 4, 28),
+    ) is False

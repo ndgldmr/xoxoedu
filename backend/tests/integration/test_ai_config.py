@@ -57,7 +57,7 @@ async def test_get_config_returns_defaults_when_no_row_exists(
     course = await _make_course(db, admin.id)
 
     resp = await client.get(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
@@ -79,7 +79,7 @@ async def test_get_config_requires_admin(
     course = await _make_course(db, student.id)
 
     resp = await client.get(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
@@ -95,7 +95,7 @@ async def test_patch_config_creates_row(
     course = await _make_course(db, admin.id)
 
     resp = await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"tone": "strict", "monthly_token_limit": 50_000},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -117,14 +117,14 @@ async def test_patch_config_updates_existing_row(
 
     # Create
     await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"tone": "neutral"},
         headers={"Authorization": f"Bearer {token}"},
     )
 
     # Update
     resp = await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"ai_enabled": False},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -143,13 +143,13 @@ async def test_patch_config_get_reflects_persisted_values(
     course = await _make_course(db, admin.id)
 
     await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"tone": "strict", "alert_threshold": 0.5},
         headers={"Authorization": f"Bearer {token}"},
     )
 
     resp = await client.get(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     data = resp.json()["data"]
@@ -165,7 +165,7 @@ async def test_patch_invalid_tone_rejected(
     course = await _make_course(db, admin.id)
 
     resp = await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"tone": "aggressive"},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -179,7 +179,7 @@ async def test_patch_config_requires_admin(
     course = await _make_course(db, student.id)
 
     resp = await client.patch(
-        f"/api/v1/ai/admin/ai/config/{course.id}",
+        f"/api/v1/admin/ai/config/{course.id}",
         json={"ai_enabled": False},
         headers={"Authorization": f"Bearer {token}"},
     )

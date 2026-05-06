@@ -6,9 +6,10 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import Forbidden, SessionNotFound
+from app.core.exceptions import Forbidden, SessionNotFound, UsernameAlreadyTaken
 from app.db.models.session import Session
 from app.db.models.user import User
+from app.modules.auth import service as auth_service
 from app.modules.users.schemas import UserUpdateIn
 
 
@@ -23,7 +24,13 @@ async def update_me(db: AsyncSession, user: User, body: UserUpdateIn) -> User:
     Returns:
         The refreshed ``User`` instance with updated profile data.
     """
-    for field, value in body.model_dump(exclude_none=True).items():
+    if body.username is not None:
+        available = await auth_service.is_username_available(db, body.username, exclude_user_id=user.id)
+        if not available:
+            raise UsernameAlreadyTaken()
+
+    updates = body.model_dump(mode="json", exclude_none=True)
+    for field, value in updates.items():
         setattr(user, field, value)
 
     await db.commit()

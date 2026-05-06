@@ -8,6 +8,10 @@ class NotificationType(StrEnum):
     MENTION = "mention"
     GRADE_PUBLISHED = "grade_published"
     CERTIFICATE_ISSUED = "certificate_issued"
+    LIVE_SESSION_REMINDER = "live_session_reminder"
+    PAYMENT_DUE_SOON = "payment_due_soon"
+    PAYMENT_PROCESSED = "payment_processed"
+    PAYMENT_FAILED = "payment_failed"
 
 
 class NotificationChannel(StrEnum):
@@ -27,6 +31,10 @@ ALL_NOTIFICATION_TYPES: tuple[NotificationType, ...] = (
     NotificationType.MENTION,
     NotificationType.GRADE_PUBLISHED,
     NotificationType.CERTIFICATE_ISSUED,
+    NotificationType.LIVE_SESSION_REMINDER,
+    NotificationType.PAYMENT_DUE_SOON,
+    NotificationType.PAYMENT_PROCESSED,
+    NotificationType.PAYMENT_FAILED,
 )
 
 DEFAULT_IN_APP_ENABLED = True

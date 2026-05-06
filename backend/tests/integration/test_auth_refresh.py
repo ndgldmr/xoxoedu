@@ -40,7 +40,7 @@ async def test_refresh_returns_new_token(client: AsyncClient, db: AsyncSession) 
 @pytest.mark.asyncio
 async def test_refresh_without_cookie_fails(client: AsyncClient) -> None:
     resp = await client.post("/api/v1/auth/refresh")
-    assert resp.status_code == 400
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio

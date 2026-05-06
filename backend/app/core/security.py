@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
-from jose import JWTError, jwt
+from jose import ExpiredSignatureError, JWTError, jwt
 
 from app.config import settings
 
@@ -73,11 +73,15 @@ def decode_access_token(token: str) -> dict[str, object]:
         The decoded JWT payload as a plain dictionary.
 
     Raises:
-        TokenInvalid: If the token is malformed, has an invalid signature,
-            or has expired (jose raises ``JWTError`` for all these cases).
+        TokenExpired: If the token's ``exp`` claim is in the past.
+        TokenInvalid: If the token is malformed or has an invalid signature.
     """
     try:
         return jwt.decode(token, settings.JWT_PUBLIC_KEY, algorithms=[settings.JWT_ALGORITHM])
+    except ExpiredSignatureError as e:
+        from app.core.exceptions import TokenExpired
+
+        raise TokenExpired() from e
     except JWTError as e:
         from app.core.exceptions import TokenInvalid
 

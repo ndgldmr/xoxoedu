@@ -49,7 +49,7 @@ async def test_list_users_forbidden_for_student(client: AsyncClient, db: AsyncSe
 @pytest.mark.asyncio
 async def test_list_users_unauthenticated(client: AsyncClient) -> None:
     resp = await client.get("/api/v1/admin/users")
-    assert resp.status_code == 400
+    assert resp.status_code == 401
 
 
 @pytest.mark.asyncio

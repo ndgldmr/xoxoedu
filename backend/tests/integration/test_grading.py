@@ -299,12 +299,12 @@ async def test_attempt_number_increments_on_reupload(
         return_value=_FAKE_URL,
     ):
         r1 = await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={"file_name": "r1.pdf", "mime_type": "application/pdf", "file_size": 100},
             headers=_auth(s_token),
         )
         r2 = await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={"file_name": "r2.pdf", "mime_type": "application/pdf", "file_size": 100},
             headers=_auth(s_token),
         )

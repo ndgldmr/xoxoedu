@@ -163,7 +163,7 @@ async def get_transcript(
 
 
 @router.patch(
-    "/lessons/{lesson_id}/transcript",
+    "/admin/lessons/{lesson_id}/transcript",
     dependencies=[require_role(Role.ADMIN)],
 )
 async def update_transcript(

@@ -17,6 +17,9 @@ from app.core.exceptions import (
 )
 from app.core.middleware import RequestIDMiddleware
 from app.modules.admin.router import router as admin_router
+from app.modules.batches.router import router as batches_router
+from app.modules.placement.router import router as placement_router
+from app.modules.programs.router import router as programs_router
 from app.modules.ai.router import router as ai_router
 from app.modules.assignments.router import router as assignments_router
 from app.modules.auth.router import router as auth_router
@@ -28,6 +31,7 @@ from app.modules.enrollments.router import router as enrollments_router
 from app.modules.media.router import router as media_router
 from app.modules.notifications.router import router as notifications_router
 from app.modules.payments.router import router as payments_router
+from app.modules.subscriptions.router import router as subscriptions_router
 from app.modules.quizzes.router import router as quizzes_router
 from app.modules.rag.router import router as rag_router
 from app.modules.users.router import router as users_router
@@ -91,11 +95,15 @@ app.include_router(ai_router, prefix="/api/v1")
 app.include_router(media_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(payments_router, prefix="/api/v1")
+app.include_router(subscriptions_router, prefix="/api/v1")
 app.include_router(coupons_router, prefix="/api/v1")
 app.include_router(certificates_router, prefix="/api/v1")
 app.include_router(video_router, prefix="/api/v1")
 app.include_router(rag_router, prefix="/api/v1")
 app.include_router(discussions_router, prefix="/api/v1")
+app.include_router(batches_router, prefix="/api/v1")
+app.include_router(placement_router, prefix="/api/v1")
+app.include_router(programs_router, prefix="/api/v1")
 
 
 @app.get("/health")

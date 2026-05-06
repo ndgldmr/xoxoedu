@@ -20,6 +20,8 @@ from app.db.models.user import User
 async def _make_user(
     db: AsyncSession, email: str, role: str = "student"
 ) -> tuple[User, str]:
+    local, domain = email.split("@")
+    email = f"{local}_{uuid.uuid4().hex[:8]}@{domain}"
     user = User(
         id=uuid.uuid4(),
         email=email,
@@ -298,7 +300,7 @@ async def test_refund_payment(client: AsyncClient, db: AsyncSession) -> None:
     await db.refresh(payment)
     await db.refresh(enrollment)
     assert payment.status == "refunded"
-    assert enrollment.status == "refunded"
+    assert enrollment.status == "unenrolled"
 
 
 @pytest.mark.asyncio

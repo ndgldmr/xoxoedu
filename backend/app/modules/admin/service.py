@@ -20,6 +20,7 @@ from app.core.exceptions import (
     SubmissionNotGradeable,
     UserNotFound,
 )
+from app.core.storage import generate_presigned_get
 from app.db.models.announcement import Announcement
 from app.db.models.assignment import Assignment, AssignmentSubmission
 from app.db.models.coupon import Coupon
@@ -30,6 +31,7 @@ from app.db.models.quiz import Quiz, QuizSubmission
 from app.db.models.user import User
 from app.modules.admin.schemas import (
     AdminPaymentOut,
+    AdminSubmissionDetailOut,
     AdminSubmissionOut,
     AnnouncementIn,
     AnnouncementOut,
@@ -297,7 +299,7 @@ async def refund_payment(db: AsyncSession, payment_id: uuid.UUID) -> RefundOut:
         )
     )
     if enrollment:
-        enrollment.status = "refunded"
+        enrollment.status = "unenrolled"
 
     await db.commit()
     return RefundOut(
@@ -348,7 +350,10 @@ async def list_submissions(
     total = await db.scalar(total_q) or 0
 
     rows = await db.scalars(
-        base.options(selectinload(AssignmentSubmission.user))
+        base.options(
+            selectinload(AssignmentSubmission.user),
+            selectinload(AssignmentSubmission.assignment).selectinload(Assignment.lesson),
+        )
         .order_by(AssignmentSubmission.submitted_at.asc())
         .offset(skip)
         .limit(limit)
@@ -358,6 +363,8 @@ async def list_submissions(
     for s in rows:
         out = AdminSubmissionOut.model_validate(s)
         out.user_email = s.user.email if s.user else None
+        out.assignment_title = s.assignment.title if s.assignment else None
+        out.lesson_title = s.assignment.lesson.title if (s.assignment and s.assignment.lesson) else None
         results.append(out)
     return results, total
 
@@ -469,6 +476,54 @@ async def reopen_submission(
 
     out = AdminSubmissionOut.model_validate(submission)
     out.user_email = submission.user.email if submission.user else None
+    return out
+
+
+async def get_submission_detail(
+    db: AsyncSession, submission_id: uuid.UUID
+) -> AdminSubmissionDetailOut:
+    """Fetch a single submission with a short-lived presigned download URL.
+
+    The download URL is generated from the stored R2 ``file_key`` and is valid
+    for 5 minutes.  If the storage call fails (e.g. in environments without
+    real R2 credentials) ``download_url`` is ``None`` rather than raising.
+
+    Args:
+        db: Async database session.
+        submission_id: UUID of the submission to retrieve.
+
+    Returns:
+        An ``AdminSubmissionDetailOut`` with all grading fields and a
+        ``download_url`` for the submitted file.
+
+    Raises:
+        AssignmentSubmissionNotFound: If no submission with ``submission_id`` exists.
+    """
+    submission = await db.scalar(
+        select(AssignmentSubmission)
+        .where(AssignmentSubmission.id == submission_id)
+        .options(
+            selectinload(AssignmentSubmission.user),
+            selectinload(AssignmentSubmission.assignment).selectinload(Assignment.lesson),
+        )
+    )
+    if not submission:
+        raise AssignmentSubmissionNotFound()
+
+    out = AdminSubmissionDetailOut.model_validate(submission)
+    out.user_email = submission.user.email if submission.user else None
+    out.assignment_title = submission.assignment.title if submission.assignment else None
+    out.lesson_title = (
+        submission.assignment.lesson.title
+        if (submission.assignment and submission.assignment.lesson)
+        else None
+    )
+
+    try:
+        out.download_url = generate_presigned_get(submission.file_key)
+    except Exception:
+        out.download_url = None
+
     return out
 
 

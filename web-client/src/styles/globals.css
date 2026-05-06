@@ -1,0 +1,146 @@
+@import "tailwindcss";
+
+@theme {
+  /* Colors */
+  --color-canvas-white: #ffffff;
+  --color-ghost-gray: #f2f2f2;
+  --color-subtle-ash: #e5e5e5;
+  --color-midtone-gray: #737373;
+  --color-rich-black: #0a0a0a;
+  --color-deep-black: #000000;
+  --color-callout-red: #c22b10;
+  --color-success-green: #10c22b;
+
+  /* Typography */
+  --font-geist: 'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-geist-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  /* Typography — Scale */
+  --text-caption: 12px;
+  --leading-caption: 1.5;
+  --text-body: 14px;
+  --leading-body: 1.43;
+  --text-heading: 18px;
+  --leading-heading: 1.33;
+  --tracking-heading: -0.45px;
+  --text-display: 48px;
+  --leading-display: 1;
+  --tracking-display: -2.4px;
+
+  /* Border Radius */
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 14px;
+  --radius-3xl: 26px;
+  --radius-full: 9996px;
+  --radius-full-2: 9999px;
+  --radius-full-3: 159981px;
+  --radius-full-4: 159984px;
+
+  /* Shadows */
+  --shadow-subtle: lab(100 0 0) 0px 0px 0px 2px;
+  --shadow-subtle-2: oklab(0.145 -0.00000143796 0.00000340492 / 0.1) 0px 0px 0px 1px;
+}
+
+:root {
+  /* Spacing — design-system constants (CSS variables only, not Tailwind utility overrides) */
+  --spacing-4: 4px;
+  --spacing-5: 5px;
+  --spacing-6: 6px;
+  --spacing-8: 8px;
+  --spacing-10: 10px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-40: 40px;
+  --spacing-80: 80px;
+  --spacing-83: 83px;
+
+  /* Layout */
+  --page-shell-content-max: 1360px;
+  --page-shell-reading-max: 32rem;
+  --page-shell-narrow-max: 28rem;
+
+  --background: #ffffff;
+  --foreground: #0a0a0a;
+  --card: #ffffff;
+  --card-foreground: #0a0a0a;
+  --popover: #ffffff;
+  --popover-foreground: #0a0a0a;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #f2f2f2;
+  --secondary-foreground: #0a0a0a;
+  --muted: #f2f2f2;
+  --muted-foreground: #737373;
+  --accent: #f2f2f2;
+  --accent-foreground: #0a0a0a;
+  --destructive: #c22b10;
+  --destructive-foreground: #ffffff;
+  --border: #e5e5e5;
+  --input: #e5e5e5;
+  --ring: #0a0a0a;
+  --radius: 10px;
+  --page-gutter: var(--spacing-24);
+}
+
+@media (min-width: 640px) {
+  :root {
+    --page-gutter: var(--spacing-32);
+  }
+}
+
+@media (min-width: 1024px) {
+  :root {
+    --page-gutter: var(--spacing-40);
+  }
+}
+
+@theme inline {
+  --font-sans: 'Geist', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 2px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+
+  code {
+    font-family: var(--font-mono);
+  }
+
+  a {
+    @apply transition-colors;
+  }
+}

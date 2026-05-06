@@ -439,7 +439,9 @@ async def test_non_enrolled_cannot_create_note(client: AsyncClient, db: AsyncSes
 # ── Bookmarks ──────────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-async def test_toggle_bookmark_creates_and_removes(client: AsyncClient, db: AsyncSession) -> None:
+async def test_bookmark_put_and_delete_are_idempotent(
+    client: AsyncClient, db: AsyncSession
+) -> None:
     admin, _ = await _make_user(db, f"admin-bm-{uuid.uuid4().hex[:6]}@example.com", "admin")
     student, token = await _make_user(db, f"student-bm-{uuid.uuid4().hex[:6]}@example.com")
     course = await _make_course(db, admin.id)
@@ -447,14 +449,28 @@ async def test_toggle_bookmark_creates_and_removes(client: AsyncClient, db: Asyn
     lesson = await _make_lesson(db, chapter.id)
     await _make_enrollment(db, student.id, course.id)
 
-    resp = await client.post(
+    resp = await client.put(
         f"/api/v1/lessons/{lesson.id}/bookmark",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
     assert resp.json()["data"]["bookmarked"] is True
 
-    resp = await client.post(
+    resp = await client.put(
+        f"/api/v1/lessons/{lesson.id}/bookmark",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["bookmarked"] is True
+
+    resp = await client.delete(
+        f"/api/v1/lessons/{lesson.id}/bookmark",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["data"]["bookmarked"] is False
+
+    resp = await client.delete(
         f"/api/v1/lessons/{lesson.id}/bookmark",
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -473,7 +489,7 @@ async def test_list_bookmarks_returns_lesson_and_course_context(
     lesson = await _make_lesson(db, chapter.id)
     await _make_enrollment(db, student.id, course.id)
 
-    await client.post(
+    await client.put(
         f"/api/v1/lessons/{lesson.id}/bookmark",
         headers={"Authorization": f"Bearer {token}"},
     )

@@ -18,6 +18,8 @@ from app.core.exceptions import (
 )
 from app.db.models.course import Chapter, Course, Lesson
 from app.db.models.enrollment import Enrollment, LessonProgress, UserBookmark, UserNote
+from app.db.models.program import ProgramEnrollment, ProgramStep
+from app.modules.programs.unlock import LessonInfo, assert_lesson_accessible
 from app.modules.enrollments.schemas import (
     ContinueLearningItem,
     CourseProgressOut,
@@ -148,6 +150,109 @@ async def _load_enrollment_with_course(
     if not enrollment:
         raise EnrollmentNotFound()
     return enrollment
+
+
+# ── Program unlock context (AL-BE-7) ──────────────────────────────────────────
+
+async def _get_program_lesson_context(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    course_id: uuid.UUID,
+) -> list[LessonInfo] | None:
+    """Return the ordered LessonInfo list for a course if it belongs to the student's active program.
+
+    This is the DB-side half of the AL-BE-7 unlock gate.  Returns ``None``
+    (skip the gate) when:
+
+    - The student has no active ``ProgramEnrollment``, or
+    - The course is not a step in the active program.
+
+    When ``None`` is returned ``save_progress`` proceeds without the unlock
+    check, preserving backward compatibility for standalone course enrollments.
+
+    Args:
+        db: Async database session.
+        user_id: UUID of the student.
+        course_id: UUID of the course the lesson belongs to.
+
+    Returns:
+        An ordered list of :class:`LessonInfo` for the course (sorted by
+        chapter.position ASC, lesson.position ASC), or ``None``.
+    """
+    # 1. Active ProgramEnrollment
+    pe = await db.scalar(
+        select(ProgramEnrollment).where(
+            ProgramEnrollment.user_id == user_id,
+            ProgramEnrollment.status == "active",
+        )
+    )
+    if pe is None:
+        return None
+
+    # 2. Check that this course is actually a step in the active program
+    step = await db.scalar(
+        select(ProgramStep).where(
+            ProgramStep.program_id == pe.program_id,
+            ProgramStep.course_id == course_id,
+        )
+    )
+    if step is None:
+        return None
+
+    # 3. Load course with chapters and lessons
+    course = await db.scalar(
+        select(Course)
+        .where(Course.id == course_id)
+        .options(selectinload(Course.chapters).selectinload(Chapter.lessons))
+    )
+    if course is None:
+        return None
+
+    # Build chapter lookup to avoid lazy-load triggers on lesson.chapter
+    chapter_by_lesson_id: dict[uuid.UUID, Chapter] = {}
+    for ch in course.chapters:
+        for ls in ch.lessons:
+            chapter_by_lesson_id[ls.id] = ch
+
+    lessons_in_order: list[Lesson] = [
+        ls
+        for ch in sorted(course.chapters, key=lambda c: c.position)
+        for ls in sorted(ch.lessons, key=lambda l: l.position)
+    ]
+    lesson_ids = [ls.id for ls in lessons_in_order]
+
+    # 4. Lesson progress rows for existing entries
+    progress_rows = await db.scalars(
+        select(LessonProgress).where(
+            LessonProgress.user_id == user_id,
+            LessonProgress.lesson_id.in_(lesson_ids),
+        )
+    )
+    progress_by_lesson: dict[uuid.UUID, LessonProgress] = {
+        p.lesson_id: p for p in progress_rows
+    }
+
+    return [
+        LessonInfo(
+            lesson_id=ls.id,
+            chapter_id=ls.chapter_id,
+            chapter_title=chapter_by_lesson_id[ls.id].title,
+            lesson_title=ls.title,
+            position_in_course=idx,
+            is_locked=ls.is_locked,
+            progress_status=(
+                progress_by_lesson[ls.id].status
+                if ls.id in progress_by_lesson
+                else "not_started"
+            ),
+            completed_at=(
+                progress_by_lesson[ls.id].completed_at
+                if ls.id in progress_by_lesson
+                else None
+            ),
+        )
+        for idx, ls in enumerate(lessons_in_order)
+    ]
 
 
 # ── Enrollment ─────────────────────────────────────────────────────────────────
@@ -344,6 +449,11 @@ async def save_progress(
     """
     lesson, course_id = await _get_lesson_with_chapter(db, lesson_id)
     await _get_active_enrollment(db, user_id, course_id)
+
+    # AL-BE-7: Unlock gate — skipped for standalone courses not in any program step
+    lesson_infos = await _get_program_lesson_context(db, user_id, course_id)
+    if lesson_infos is not None:
+        assert_lesson_accessible(lesson_infos, lesson_id)
 
     existing = await db.scalar(
         select(LessonProgress).where(
@@ -699,18 +809,23 @@ async def list_notes(
 
 # ── Bookmarks ──────────────────────────────────────────────────────────────────
 
-async def toggle_bookmark(
-    db: AsyncSession, user_id: uuid.UUID, lesson_id: uuid.UUID
+async def set_bookmark(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    lesson_id: uuid.UUID,
+    *,
+    bookmarked: bool,
 ) -> bool:
-    """Toggle a bookmark on a lesson, creating it if absent or deleting it if present.
+    """Set bookmark state on a lesson idempotently.
 
     Args:
         db: Async database session.
         user_id: UUID of the student.
         lesson_id: UUID of the lesson to bookmark.
+        bookmarked: Desired bookmark state.
 
     Returns:
-        ``True`` if the lesson is now bookmarked; ``False`` if the bookmark was removed.
+        The resulting bookmark state.
 
     Raises:
         LessonNotFound: If the lesson does not exist.
@@ -725,14 +840,34 @@ async def toggle_bookmark(
             UserBookmark.lesson_id == lesson_id,
         )
     )
-    if existing:
+    if bookmarked:
+        if existing is None:
+            db.add(UserBookmark(user_id=user_id, lesson_id=lesson_id))
+            await db.commit()
+        return True
+
+    if existing is not None:
         await db.delete(existing)
         await db.commit()
-        return False
+    return False
 
-    db.add(UserBookmark(user_id=user_id, lesson_id=lesson_id))
-    await db.commit()
-    return True
+
+async def toggle_bookmark(
+    db: AsyncSession, user_id: uuid.UUID, lesson_id: uuid.UUID
+) -> bool:
+    """Toggle a bookmark on a lesson, creating it if absent or deleting it if present."""
+    existing = await db.scalar(
+        select(UserBookmark).where(
+            UserBookmark.user_id == user_id,
+            UserBookmark.lesson_id == lesson_id,
+        )
+    )
+    return await set_bookmark(
+        db,
+        user_id,
+        lesson_id,
+        bookmarked=existing is None,
+    )
 
 
 async def list_bookmarks(

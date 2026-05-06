@@ -138,7 +138,7 @@ async def test_request_upload_returns_presigned_url(
         return_value=_FAKE_PRESIGNED_URL,
     ):
         resp = await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={
                 "file_name": "report.pdf",
                 "mime_type": "application/pdf",
@@ -169,7 +169,7 @@ async def test_confirm_upload_sets_submitted_at(
         return_value=_FAKE_PRESIGNED_URL,
     ):
         upload_resp = await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={
                 "file_name": "report.pdf",
                 "mime_type": "application/pdf",
@@ -201,7 +201,7 @@ async def test_list_submissions_student(client: AsyncClient, db: AsyncSession) -
         return_value=_FAKE_PRESIGNED_URL,
     ):
         await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={
                 "file_name": "report.pdf",
                 "mime_type": "application/pdf",
@@ -236,7 +236,7 @@ async def test_upload_rejects_invalid_extension(
         return_value=_FAKE_PRESIGNED_URL,
     ):
         resp = await client.post(
-            f"/api/v1/assignments/{assignment.id}/upload",
+            f"/api/v1/assignments/{assignment.id}/uploads",
             json={
                 "file_name": "malware.exe",
                 "mime_type": "application/octet-stream",

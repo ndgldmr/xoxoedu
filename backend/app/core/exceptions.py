@@ -83,7 +83,7 @@ class TokenExpired(AppException):
 class TokenInvalid(AppException):
     """Raised when a token fails signature verification or has an invalid format."""
 
-    status_code = 400
+    status_code = 401
     error_code = "TOKEN_INVALID"
     message = "Token is invalid"
 
@@ -145,6 +145,14 @@ class LessonNotFound(AppException):
     status_code = 404
     error_code = "LESSON_NOT_FOUND"
     message = "Lesson not found"
+
+
+class ResourceNotFound(AppException):
+    """Raised when a lesson resource cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "RESOURCE_NOT_FOUND"
+    message = "Resource not found"
 
 
 class SlugConflict(AppException):
@@ -473,6 +481,266 @@ class DiscussionFlagAlreadyResolved(AppException):
     status_code = 409
     error_code = "DISCUSSION_FLAG_ALREADY_RESOLVED"
     message = "This flag has already been resolved"
+
+
+class ProgramNotFound(AppException):
+    """Raised when a program cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "PROGRAM_NOT_FOUND"
+    message = "Program not found"
+
+
+class ProgramEnrollmentRequired(AppException):
+    """Raised when a batch operation requires an active program enrollment that is missing."""
+
+    status_code = 409
+    error_code = "PROGRAM_ENROLLMENT_REQUIRED"
+    message = "Student must have an active program enrollment before joining a batch"
+
+
+class BatchNotFound(AppException):
+    """Raised when a batch cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "BATCH_NOT_FOUND"
+    message = "Batch not found"
+
+
+class BatchEnrollmentNotFound(AppException):
+    """Raised when a batch enrollment cannot be found for the given user."""
+
+    status_code = 404
+    error_code = "BATCH_ENROLLMENT_NOT_FOUND"
+    message = "Batch membership not found"
+
+
+class BatchAtCapacity(AppException):
+    """Raised when adding a member would exceed the batch's seat limit."""
+
+    status_code = 409
+    error_code = "BATCH_AT_CAPACITY"
+    message = "This batch has reached its maximum capacity"
+
+
+class BatchArchived(AppException):
+    """Raised when a write operation targets an archived batch."""
+
+    status_code = 409
+    error_code = "BATCH_ARCHIVED"
+    message = "Archived batches do not accept changes"
+
+
+class AlreadyInBatch(AppException):
+    """Raised when a student is already a member of the given batch."""
+
+    status_code = 409
+    error_code = "ALREADY_IN_BATCH"
+    message = "This student is already a member of the batch"
+
+
+class StudentAlreadyInActiveBatch(AppException):
+    """Raised when a student already belongs to an active batch for the same program."""
+
+    status_code = 409
+    error_code = "STUDENT_ALREADY_IN_ACTIVE_BATCH"
+    message = "This student is already in an active batch for this program"
+
+
+class StudentAlreadyInProgramBatch(AppException):
+    """Raised when a student has already selected any batch for their active program."""
+
+    status_code = 409
+    error_code = "STUDENT_ALREADY_IN_PROGRAM_BATCH"
+    message = "You have already selected a batch for this program"
+
+
+class BatchProgramMismatch(AppException):
+    """Raised when a student selects a batch outside their active program."""
+
+    status_code = 409
+    error_code = "BATCH_PROGRAM_MISMATCH"
+    message = "You can only select batches from your active program"
+
+
+class BatchNotOpenForEnrollment(AppException):
+    """Raised when a batch is not currently open for student self-selection."""
+
+    status_code = 409
+    error_code = "BATCH_NOT_OPEN_FOR_ENROLLMENT"
+    message = "This batch is not open for enrollment"
+
+
+class BatchTransferCurrentBatchRequired(AppException):
+    """Raised when a student must already belong to a batch to request a transfer."""
+
+    status_code = 409
+    error_code = "BATCH_TRANSFER_CURRENT_BATCH_REQUIRED"
+    message = "You must already belong to a batch before requesting a transfer"
+
+
+class BatchTransferSameBatch(AppException):
+    """Raised when a transfer target matches the student's current batch."""
+
+    status_code = 409
+    error_code = "BATCH_TRANSFER_SAME_BATCH"
+    message = "You are already in the requested batch"
+
+
+class BatchTransferRequestAlreadyPending(AppException):
+    """Raised when a student already has a pending transfer request."""
+
+    status_code = 409
+    error_code = "BATCH_TRANSFER_REQUEST_ALREADY_PENDING"
+    message = "You already have a pending batch transfer request"
+
+
+class BatchTransferRequestNotFound(AppException):
+    """Raised when a batch transfer request cannot be found."""
+
+    status_code = 404
+    error_code = "BATCH_TRANSFER_REQUEST_NOT_FOUND"
+    message = "Batch transfer request not found"
+
+
+class BatchTransferRequestAlreadyResolved(AppException):
+    """Raised when an admin acts on a non-pending batch transfer request."""
+
+    status_code = 409
+    error_code = "BATCH_TRANSFER_REQUEST_ALREADY_RESOLVED"
+    message = "This batch transfer request has already been resolved"
+
+
+class BatchTransferProgramMismatch(AppException):
+    """Raised when a transfer target falls outside the student's active program."""
+
+    status_code = 409
+    error_code = "BATCH_TRANSFER_PROGRAM_MISMATCH"
+    message = "You can only transfer into batches from your active program"
+
+
+class LiveSessionNotFound(AppException):
+    """Raised when a live session cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "LIVE_SESSION_NOT_FOUND"
+    message = "Live session not found"
+
+
+class LiveSessionCanceled(AppException):
+    """Raised when a write operation targets a canceled live session."""
+
+    status_code = 409
+    error_code = "LIVE_SESSION_CANCELED"
+    message = "Canceled sessions cannot be modified"
+
+
+class NotABatchMember(AppException):
+    """Raised when attendance is marked for a user who is not in the session's batch."""
+
+    status_code = 403
+    error_code = "NOT_A_BATCH_MEMBER"
+    message = "The specified user is not a member of this batch"
+
+
+class AttendanceNotFound(AppException):
+    """Raised when an attendance record cannot be found."""
+
+    status_code = 404
+    error_code = "ATTENDANCE_NOT_FOUND"
+    message = "Attendance record not found"
+
+
+class ProgramStepNotFound(AppException):
+    """Raised when a program step cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "PROGRAM_STEP_NOT_FOUND"
+    message = "Program step not found"
+
+
+class ProgramStepConflict(AppException):
+    """Raised when a step with the same position or course already exists in the program."""
+
+    status_code = 409
+    error_code = "PROGRAM_STEP_CONFLICT"
+    message = "A step with this position or course already exists in this program"
+
+
+class ProgramEnrollmentNotFound(AppException):
+    """Raised when a program enrollment cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "PROGRAM_ENROLLMENT_NOT_FOUND"
+    message = "Program enrollment not found"
+
+
+class DuplicateActiveProgramEnrollment(AppException):
+    """Raised when a student already has an active program enrollment."""
+
+    status_code = 409
+    error_code = "DUPLICATE_ACTIVE_PROGRAM_ENROLLMENT"
+    message = "Student already has an active program enrollment"
+
+
+class SubscriptionRequired(AppException):
+    """Raised when content access is attempted without an active subscription."""
+
+    status_code = 402
+    error_code = "SUBSCRIPTION_REQUIRED"
+    message = "An active subscription is required to access this content"
+
+
+class SubscriptionNotFound(AppException):
+    """Raised when a subscription cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "SUBSCRIPTION_NOT_FOUND"
+    message = "Subscription not found"
+
+
+class NoMarketForCountry(AppException):
+    """Raised when a student's country does not map to any launch market."""
+
+    status_code = 422
+    error_code = "NO_MARKET_FOR_COUNTRY"
+    message = "No subscription plan is available for your country"
+
+
+class PlacementResultNotFound(AppException):
+    """Raised when a placement result cannot be found by its ID."""
+
+    status_code = 404
+    error_code = "PLACEMENT_RESULT_NOT_FOUND"
+    message = "Placement result not found"
+
+
+class NoPlacementResult(AppException):
+    """Raised when a student requests their placement result before completing the assessment."""
+
+    status_code = 404
+    error_code = "NO_PLACEMENT_RESULT"
+    message = "No placement result found for this student"
+
+
+class LessonLocked(AppException):
+    """Raised when a student attempts to save progress on a lesson not yet accessible.
+
+    Covers both admin hard-locks (``Lesson.is_locked == True``) and sequential
+    position locks (preceding lesson not yet completed).
+    """
+
+    status_code = 403
+    error_code = "LESSON_LOCKED"
+    message = "This lesson is not yet accessible"
+
+
+class ProgramNotActive(AppException):
+    """Raised when a student requests program progress but has no active program enrollment."""
+
+    status_code = 403
+    error_code = "PROGRAM_NOT_ACTIVE"
+    message = "You do not have an active program enrollment"
 
 
 async def app_exception_handler(request: Request, exc: AppException) -> JSONResponse:

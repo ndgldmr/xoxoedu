@@ -1,26 +1,47 @@
 #!/usr/bin/env python3
 """
-Seed the database with one admin, one student, and one fully-featured course.
+Seed the database with the three XOXO programs (OC, PT, FE), realistic
+student profiles, subscriptions, placements, batches, live sessions, and
+billing notifications.
 
 Usage:
     uv run scripts/seed_db.py              # seed (skips if already seeded)
     uv run scripts/seed_db.py --reset      # wipe all seed data and re-seed
 """
 import asyncio
-import secrets
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-_SEED_MARKER_SLUG = "python-for-beginners"
+_SEED_MARKER_SLUG = "grammar-foundations"  # OC program's first course
 
 
 async def _reset(db) -> None:
     from sqlalchemy import text
 
     tables = [
+        # New aligned tables — must come first (cascade order)
+        "session_attendance",
+        "live_sessions",
+        "batch_transfer_requests",
+        "batch_enrollments",
+        "batches",
+        "placement_results",
+        "placement_attempts",
+        "payment_transactions",
+        "billing_cycles",
+        "subscriptions",
+        "subscription_plans",
+        "program_enrollments",
+        "program_steps",
+        "programs",
+        # Notification tables
+        "notification_deliveries",
+        "notifications",
+        "notification_preferences",
+        # Legacy content tables
         "certificate_requests",
         "certificates",
         "announcements",
@@ -53,22 +74,73 @@ async def _reset(db) -> None:
     print("[~] All tables truncated.")
 
 
+def _assert_migrations_current() -> None:
+    """Exit with a clear message if alembic migrations are not at head.
+
+    Uses alembic's own API to compare the DB's current revision against the
+    head of the local migration scripts.  Call this before any seeding or reset
+    so that truncate/insert errors caused by missing tables are surfaced early
+    with actionable guidance.
+    """
+    from alembic.config import Config
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import create_engine, text
+
+    # Resolve alembic.ini relative to the backend root (one level up from scripts/)
+    alembic_ini = Path(__file__).parent.parent / "alembic.ini"
+
+    from app.config import settings as _settings
+
+    sync_url = _settings.DATABASE_URL_SYNC
+
+    try:
+        engine = create_engine(sync_url)
+        with engine.connect() as conn:
+            context = MigrationContext.configure(conn)
+            current_heads = set(context.get_current_heads())
+        engine.dispose()
+    except Exception as exc:
+        print(f"[!] Could not connect to database to check migrations: {exc}")
+        sys.exit(1)
+
+    script = ScriptDirectory.from_config(Config(str(alembic_ini)))
+    expected_heads = set(script.get_heads())
+
+    if current_heads != expected_heads:
+        missing = expected_heads - current_heads
+        print("[!] Database schema is not up to date.")
+        print(f"    Current:  {current_heads or '(no migrations applied)'}")
+        print(f"    Expected: {expected_heads}")
+        if missing:
+            print(f"    Missing:  {missing}")
+        print()
+        print("    Run:  alembic upgrade head")
+        sys.exit(1)
+
+
 async def main(reset: bool = False) -> None:
     from sqlalchemy import select
     from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
     from app.config import settings
     from app.core.security import hash_password
-    from app.db.models.ai import AIUsageBudget, AIUsageLog
-    from app.db.models.announcement import Announcement
-    from app.db.models.assignment import Assignment, AssignmentSubmission
-    from app.db.models.certificate import Certificate, CertificateRequest
-    from app.db.models.coupon import Coupon
-    from app.db.models.course import Category, Chapter, Course, Lesson, LessonResource
-    from app.db.models.enrollment import Enrollment, LessonProgress, UserBookmark, UserNote
-    from app.db.models.payment import Payment
-    from app.db.models.quiz import Quiz, QuizFeedback, QuizQuestion, QuizSubmission
+    from app.db.models.batch import Batch, BatchEnrollment, BatchTransferRequest
+    from app.db.models.course import Category, Chapter, Course, Lesson
+    from app.db.models.enrollment import Enrollment, LessonProgress
+    from app.db.models.live_session import LiveSession
+    from app.db.models.notification import Notification
+    from app.db.models.placement import PlacementAttempt, PlacementResult
+    from app.db.models.program import Program, ProgramEnrollment, ProgramStep
+    from app.db.models.session_attendance import SessionAttendance
+    from app.db.models.subscription import (
+        BillingCycle,
+        PaymentTransaction,
+        Subscription,
+        SubscriptionPlan,
+    )
     from app.db.models.user import User
+    from app.modules.notifications.constants import NotificationType
 
     engine = create_async_engine(settings.DATABASE_URL)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
@@ -86,522 +158,809 @@ async def main(reset: bool = False) -> None:
                 return
 
         now = datetime.now(timezone.utc)
-
-        # ── Category ─────────────────────────────────────────────────────────
-        programming = Category(name="Programming", slug="programming")
-        db.add(programming)
-        await db.flush()
-        python_cat = Category(name="Python", slug="python", parent_id=programming.id)
-        db.add(python_cat)
-        await db.flush()
-        print("[+] Created categories.")
+        today = now.date()
 
         # ── Users ─────────────────────────────────────────────────────────────
         admin = User(
             email="admin@xoxoedu.com",
-            password_hash=hash_password("admin123"),
+            password_hash=hash_password("Admin1234!"),
             role="admin",
             email_verified=True,
             display_name="Admin",
             headline="Platform administrator",
         )
-        student = User(
-            email="student@xoxoedu.com",
-            password_hash=hash_password("password123"),
+        alice = User(
+            email="alice@student.com",
+            password_hash=hash_password("Student1234!"),
             role="student",
             email_verified=True,
-            display_name="Alex Student",
-            bio="Learning Python to build my first web app.",
-            headline="Aspiring Developer",
-            skills=["Python", "HTML"],
-            social_links={"github": "https://github.com/alexstudent"},
+            display_name="Alice Ferreira",
+            country="BR",
+            bio="Improving my English to grow my international career.",
+            headline="Marketing Professional",
         )
-        db.add_all([admin, student])
+        bob = User(
+            email="bob@student.com",
+            password_hash=hash_password("Student1234!"),
+            role="student",
+            email_verified=True,
+            display_name="Bob Tremblay",
+            country="CA",
+            bio="Learning English for professional development.",
+            headline="Software Developer",
+        )
+        carol = User(
+            email="carol@student.com",
+            password_hash=hash_password("Student1234!"),
+            role="student",
+            email_verified=True,
+            display_name="Carol Santos",
+            country="PT",
+            bio="Fluent English speaker looking to refine my skills.",
+            headline="UX Designer",
+        )
+        db.add_all([admin, alice, bob, carol])
         await db.flush()
-        print("[+] Created 2 users (1 admin, 1 student).")
+        print("[+] Created 4 users (1 admin, 3 students).")
 
-        # ── Course ────────────────────────────────────────────────────────────
-        course = Course(
-            slug="python-for-beginners",
-            title="Python for Beginners",
+        # ── Subscription Plans ────────────────────────────────────────────────
+        plan_br = SubscriptionPlan(
+            name="Brazil Monthly",
+            market="BR",
+            currency="BRL",
+            amount_cents=2990,
+            interval="month",
+            is_active=True,
+        )
+        plan_ca = SubscriptionPlan(
+            name="Canada Monthly",
+            market="CA",
+            currency="CAD",
+            amount_cents=1990,
+            interval="month",
+            is_active=True,
+        )
+        plan_eu = SubscriptionPlan(
+            name="Europe Monthly",
+            market="EU",
+            currency="EUR",
+            amount_cents=1490,
+            interval="month",
+            is_active=True,
+        )
+        db.add_all([plan_br, plan_ca, plan_eu])
+        await db.flush()
+        print("[+] Created 3 subscription plans (BR, CA, EU).")
+
+        # ── Subscriptions ─────────────────────────────────────────────────────
+        period_start = now - timedelta(days=15)
+        period_end = now + timedelta(days=15)
+
+        sub_alice = Subscription(
+            user_id=alice.id,
+            plan_id=plan_br.id,
+            market="BR",
+            currency="BRL",
+            amount_cents=2990,
+            status="active",
+            provider="stripe",
+            provider_subscription_id="sub_test_alice",
+            stripe_customer_id="cus_test_alice",
+            current_period_start=period_start,
+            current_period_end=period_end,
+        )
+        sub_bob = Subscription(
+            user_id=bob.id,
+            plan_id=plan_ca.id,
+            market="CA",
+            currency="CAD",
+            amount_cents=1990,
+            status="active",
+            provider="stripe",
+            provider_subscription_id="sub_test_bob",
+            stripe_customer_id="cus_test_bob",
+            current_period_start=period_start,
+            current_period_end=period_end,
+        )
+        sub_carol = Subscription(
+            user_id=carol.id,
+            plan_id=plan_eu.id,
+            market="EU",
+            currency="EUR",
+            amount_cents=1490,
+            status="past_due",
+            provider="stripe",
+            provider_subscription_id="sub_test_carol",
+            stripe_customer_id="cus_test_carol",
+            current_period_start=now - timedelta(days=45),
+            current_period_end=now - timedelta(days=15),
+        )
+        db.add_all([sub_alice, sub_bob, sub_carol])
+        await db.flush()
+
+        # Alice: paid cycle + succeeded transaction
+        cycle_alice = BillingCycle(
+            subscription_id=sub_alice.id,
+            due_date=today - timedelta(days=15),
+            paid_at=now - timedelta(days=14),
+            amount_cents=2990,
+            currency="BRL",
+            status="paid",
+        )
+        db.add(cycle_alice)
+        await db.flush()
+        db.add(PaymentTransaction(
+            user_id=alice.id,
+            subscription_id=sub_alice.id,
+            billing_cycle_id=cycle_alice.id,
+            amount_cents=2990,
+            currency="BRL",
+            status="succeeded",
+            provider="stripe",
+            provider_transaction_id="ch_test_alice_001",
+        ))
+
+        # Bob: paid cycle
+        cycle_bob = BillingCycle(
+            subscription_id=sub_bob.id,
+            due_date=today - timedelta(days=15),
+            paid_at=now - timedelta(days=14),
+            amount_cents=1990,
+            currency="CAD",
+            status="paid",
+        )
+        db.add(cycle_bob)
+
+        # Carol: pending overdue cycle (triggers billing reminder)
+        cycle_carol = BillingCycle(
+            subscription_id=sub_carol.id,
+            due_date=today - timedelta(days=15),
+            amount_cents=1490,
+            currency="EUR",
+            status="pending",
+        )
+        db.add(cycle_carol)
+        await db.flush()
+        print("[+] Created 3 subscriptions with billing cycles.")
+
+        # ── Programs ──────────────────────────────────────────────────────────
+        prog_pt = Program(
+            code="PT",
+            title="Portuguese Program",
             description=(
-                "A complete introduction to Python programming. "
-                "Learn variables, control flow, functions, and more with hands-on exercises."
+                "Weekly live conversation sessions to develop fluency and confidence "
+                "through music, cinema, and travel topics. Intermediate level."
             ),
-            category_id=python_cat.id,
-            level="beginner",
-            price_cents=2999,
-            currency="USD",
+            marketing_summary="Live Portuguese conversation circles built around culture, confidence, and weekly speaking practice.",
+            cover_image_url="https://images.unsplash.com/photo-1516302752625-fcc3c50ae61f?auto=format&fit=crop&w=1200&q=80",
+            display_order=1,
+            is_active=True,
+        )
+        prog_fe = Program(
+            code="FE",
+            title="Fluent English Program",
+            description=(
+                "Weekly live discussion groups conducted entirely in English for "
+                "fluent speakers to refine critical thinking and cultural exchange. Advanced level."
+            ),
+            marketing_summary="Advanced English discussion pathways designed to sharpen clarity, confidence, and real-world expression.",
+            cover_image_url="https://images.unsplash.com/photo-1522202176988-66273c2fd55f?auto=format&fit=crop&w=1200&q=80",
+            display_order=2,
+            is_active=True,
+        )
+        prog_oc = Program(
+            code="OC",
+            title="Online Course",
+            description=(
+                "Self-paced recorded lessons covering grammar and practical vocabulary, "
+                "with AI-personalized review activities. Beginner level."
+            ),
+            marketing_summary="Self-paced foundations with structured lessons, practical vocabulary, and flexible review support.",
+            cover_image_url="https://images.unsplash.com/photo-1513258496099-48168024aec0?auto=format&fit=crop&w=1200&q=80",
+            display_order=3,
+            is_active=True,
+        )
+        db.add_all([prog_pt, prog_fe, prog_oc])
+        await db.flush()
+        print("[+] Created 3 programs (PT, FE, OC).")
+
+        # ── Courses + Chapters + Lessons ──────────────────────────────────────
+
+        def _make_text_lesson(chapter_id, title, position, body, is_free_preview=False):
+            return Lesson(
+                chapter_id=chapter_id,
+                title=title,
+                type="text",
+                position=position,
+                is_free_preview=is_free_preview,
+                content={"body": body},
+            )
+
+        # PT — Course 1: Conversation Basics
+        cat_language = Category(name="Language Learning", slug="language-learning")
+        db.add(cat_language)
+        await db.flush()
+
+        course_pt1 = Course(
+            slug="conversation-basics",
+            title="Conversation Basics",
+            description="Foundational conversation skills for intermediate English speakers.",
+            category_id=cat_language.id,
+            level="intermediate",
             status="published",
-            display_instructor_name="Admin",
-            display_instructor_bio="Experienced Python developer and educator.",
+            display_instructor_name="XOXO Education Team",
             created_by=admin.id,
         )
-        db.add(course)
+        db.add(course_pt1)
         await db.flush()
 
-        # ── AI Config ─────────────────────────────────────────────────────────
-        db.add(AIUsageBudget(
-            course_id=course.id,
-            ai_enabled=True,
-            tone="encouraging",
-            monthly_token_limit=50_000,
-            alert_threshold=0.8,
-        ))
-
-        # ── Coupons ───────────────────────────────────────────────────────────
-        coupon_welcome = Coupon(
-            code="WELCOME10",
-            discount_type="percentage",
-            discount_value=10,
-            max_uses=None,
-            uses_count=1,
-            applies_to=None,
-            expires_at=None,
-        )
-        coupon_course = Coupon(
-            code="PYLAUNCH",
-            discount_type="fixed",
-            discount_value=500,
-            max_uses=50,
-            uses_count=3,
-            applies_to=None,
-            expires_at=datetime(2026, 12, 31, tzinfo=timezone.utc),
-        )
-        db.add_all([coupon_welcome, coupon_course])
-
-        # ── Chapters & Lessons ────────────────────────────────────────────────
-        ch1 = Chapter(course_id=course.id, title="Getting Started", position=1)
-        db.add(ch1)
+        ch_pt1a = Chapter(course_id=course_pt1.id, title="Getting Started", position=1)
+        db.add(ch_pt1a)
+        await db.flush()
+        lessons_pt1 = [
+            _make_text_lesson(ch_pt1a.id, "Welcome to the PT Program", 1,
+                "<p>Overview of the Portuguese Program format and weekly session structure.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_pt1a.id, "Introducing Yourself", 2,
+                "<p>Phrases and vocabulary for introductions in social and professional settings.</p>"),
+            _make_text_lesson(ch_pt1a.id, "Everyday Topics: Music and Cinema", 3,
+                "<p>Discussing music genres, movies, and personal preferences in English.</p>"),
+        ]
+        db.add_all(lessons_pt1)
         await db.flush()
 
-        l1 = Lesson(
-            chapter_id=ch1.id, title="Welcome to the Course", type="text",
-            position=1, is_free_preview=True,
-            content={"body": "<h2>Welcome!</h2><p>In this course you will learn Python from the ground up.</p>"},
+        # PT — Course 2: Real-World Topics
+        course_pt2 = Course(
+            slug="real-world-topics",
+            title="Real-World Topics",
+            description="Advanced conversation practice on travel, culture, and current events.",
+            category_id=cat_language.id,
+            level="intermediate",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
         )
-        l2 = Lesson(
-            chapter_id=ch1.id, title="Setting Up Your Environment", type="text",
-            position=2, is_free_preview=True,
-            content={"body": "<p>Install Python 3.12 from python.org and open a terminal to verify with <code>python --version</code>.</p>"},
-        )
-        l3 = Lesson(
-            chapter_id=ch1.id, title="Your First Program", type="text",
-            position=3,
-            content={"body": "<p>Let's write <code>print('Hello, world!')</code> together.</p>"},
-        )
-        db.add_all([l1, l2, l3])
+        db.add(course_pt2)
         await db.flush()
 
-        db.add(LessonResource(
-            lesson_id=l2.id,
-            name="Python Setup Guide.pdf",
-            file_url="https://example.com/resources/python-setup-guide.pdf",
-            file_type="application/pdf",
-            size_bytes=204_800,
-        ))
-
-        ch2 = Chapter(course_id=course.id, title="Control Flow", position=2)
-        db.add(ch2)
+        ch_pt2a = Chapter(course_id=course_pt2.id, title="Travel and Culture", position=1)
+        db.add(ch_pt2a)
+        await db.flush()
+        lessons_pt2 = [
+            _make_text_lesson(ch_pt2a.id, "Talking About Travel", 1,
+                "<p>Vocabulary and expressions for describing travel experiences.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_pt2a.id, "Cultural Exchange", 2,
+                "<p>Comparing cultural customs and traditions across countries.</p>"),
+            _make_text_lesson(ch_pt2a.id, "Current Events Discussion", 3,
+                "<p>Frameworks for discussing news and current events confidently.</p>"),
+        ]
+        db.add_all(lessons_pt2)
         await db.flush()
 
-        l4 = Lesson(
-            chapter_id=ch2.id, title="If Statements", type="text", position=1,
-            content={"body": "<p>Conditional logic with <code>if</code>, <code>elif</code>, and <code>else</code>.</p>"},
+        # FE — Course 1: Critical Discussions
+        course_fe1 = Course(
+            slug="critical-discussions",
+            title="Critical Discussions",
+            description="Structured discussion practice on culture, ideas, and current events.",
+            category_id=cat_language.id,
+            level="advanced",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
         )
-        l5 = Lesson(
-            chapter_id=ch2.id, title="Loops", type="text", position=2,
-            content={"body": "<p>Use <code>for</code> and <code>while</code> to repeat blocks of code.</p>"},
-        )
-        l6_quiz_lesson = Lesson(chapter_id=ch2.id, title="Control Flow Quiz", type="quiz", position=3)
-        l7_asgn_lesson = Lesson(chapter_id=ch2.id, title="FizzBuzz Assignment", type="assignment", position=4)
-        db.add_all([l4, l5, l6_quiz_lesson, l7_asgn_lesson])
+        db.add(course_fe1)
         await db.flush()
 
-        ch3 = Chapter(course_id=course.id, title="Functions", position=3)
-        db.add(ch3)
+        ch_fe1a = Chapter(course_id=course_fe1.id, title="Discussion Foundations", position=1)
+        db.add(ch_fe1a)
+        await db.flush()
+        lessons_fe1 = [
+            _make_text_lesson(ch_fe1a.id, "Welcome to the FE Program", 1,
+                "<p>Overview of the Fluent English Program discussion format and expectations.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_fe1a.id, "Structuring Your Argument", 2,
+                "<p>Techniques for presenting clear, logical arguments in group discussions.</p>"),
+            _make_text_lesson(ch_fe1a.id, "Active Listening and Response", 3,
+                "<p>Listening strategies and how to respond constructively in live discussions.</p>"),
+        ]
+        db.add_all(lessons_fe1)
         await db.flush()
 
-        l8 = Lesson(
-            chapter_id=ch3.id, title="Defining Functions", type="text", position=1,
-            content={"body": "<p>Use the <code>def</code> keyword to define reusable blocks of code.</p>"},
+        # FE — Course 2: Cultural Exchange
+        course_fe2 = Course(
+            slug="cultural-exchange",
+            title="Cultural Exchange",
+            description="Exploring global cultural perspectives through guided English discussions.",
+            category_id=cat_language.id,
+            level="advanced",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
         )
-        l9 = Lesson(
-            chapter_id=ch3.id, title="Arguments and Return Values", type="text", position=2,
-            content={"body": "<p>Functions can accept parameters and return values to the caller.</p>"},
-        )
-        l10_quiz_lesson = Lesson(chapter_id=ch3.id, title="Functions Quiz", type="quiz", position=3)
-        l11_asgn_lesson = Lesson(chapter_id=ch3.id, title="Calculator Assignment", type="assignment", position=4)
-        db.add_all([l8, l9, l10_quiz_lesson, l11_asgn_lesson])
+        db.add(course_fe2)
         await db.flush()
 
-        db.add(LessonResource(
-            lesson_id=l9.id,
-            name="Functions Cheatsheet.pdf",
-            file_url="https://example.com/resources/python-functions-cheatsheet.pdf",
-            file_type="application/pdf",
-            size_bytes=153_600,
-        ))
-        print("[+] Created course with 3 chapters and 11 lessons.")
-
-        # ── Quizzes ───────────────────────────────────────────────────────────
-        quiz_cf = Quiz(
-            lesson_id=l6_quiz_lesson.id,
-            title="Control Flow Quiz",
-            description="Test your knowledge of if statements and loops.",
-            max_attempts=3,
-            time_limit_minutes=10,
-        )
-        db.add(quiz_cf)
+        ch_fe2a = Chapter(course_id=course_fe2.id, title="Global Perspectives", position=1)
+        db.add(ch_fe2a)
+        await db.flush()
+        lessons_fe2 = [
+            _make_text_lesson(ch_fe2a.id, "Cross-Cultural Communication", 1,
+                "<p>Understanding and navigating cultural differences in English conversations.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_fe2a.id, "Tech and Society", 2,
+                "<p>Discussing technology's impact on society, work, and personal life.</p>"),
+            _make_text_lesson(ch_fe2a.id, "Values and Identity", 3,
+                "<p>Articulating personal values and exploring identity through discussion.</p>"),
+        ]
+        db.add_all(lessons_fe2)
         await db.flush()
 
-        q1 = QuizQuestion(
-            quiz_id=quiz_cf.id, position=1, kind="single_choice",
-            stem="Which keyword introduces a conditional branch in Python?",
-            options=[
-                {"id": "a", "text": "when"},
-                {"id": "b", "text": "if"},
-                {"id": "c", "text": "case"},
-                {"id": "d", "text": "check"},
-            ],
-            correct_answers=["b"], points=1,
+        # OC — Course 1: Grammar Foundations
+        course_oc1 = Course(
+            slug="grammar-foundations",  # seed marker
+            title="Grammar Foundations",
+            description="Short interactive lessons covering core English grammar rules.",
+            category_id=cat_language.id,
+            level="beginner",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
         )
-        q2 = QuizQuestion(
-            quiz_id=quiz_cf.id, position=2, kind="multi_choice",
-            stem="Which of the following are valid Python loop constructs?",
-            options=[
-                {"id": "a", "text": "for"},
-                {"id": "b", "text": "while"},
-                {"id": "c", "text": "repeat"},
-                {"id": "d", "text": "loop"},
-            ],
-            correct_answers=["a", "b"], points=2,
-        )
-        q3 = QuizQuestion(
-            quiz_id=quiz_cf.id, position=3, kind="single_choice",
-            stem="What does `range(3)` produce?",
-            options=[
-                {"id": "a", "text": "1, 2, 3"},
-                {"id": "b", "text": "0, 1, 2"},
-                {"id": "c", "text": "0, 1, 2, 3"},
-                {"id": "d", "text": "1, 2"},
-            ],
-            correct_answers=["b"], points=1,
-        )
-        db.add_all([q1, q2, q3])
-
-        quiz_fn = Quiz(
-            lesson_id=l10_quiz_lesson.id,
-            title="Functions Quiz",
-            description="Test your understanding of Python functions.",
-            max_attempts=2,
-            time_limit_minutes=8,
-        )
-        db.add(quiz_fn)
+        db.add(course_oc1)
         await db.flush()
 
-        qf1 = QuizQuestion(
-            quiz_id=quiz_fn.id, position=1, kind="single_choice",
-            stem="Which keyword is used to define a function in Python?",
-            options=[
-                {"id": "a", "text": "func"},
-                {"id": "b", "text": "define"},
-                {"id": "c", "text": "def"},
-                {"id": "d", "text": "function"},
-            ],
-            correct_answers=["c"], points=1,
-        )
-        qf2 = QuizQuestion(
-            quiz_id=quiz_fn.id, position=2, kind="single_choice",
-            stem="What is returned by a function with no `return` statement?",
-            options=[
-                {"id": "a", "text": "0"},
-                {"id": "b", "text": "None"},
-                {"id": "c", "text": "False"},
-                {"id": "d", "text": "An error is raised"},
-            ],
-            correct_answers=["b"], points=1,
-        )
-        qf3 = QuizQuestion(
-            quiz_id=quiz_fn.id, position=3, kind="multi_choice",
-            stem="Which of the following are valid ways to pass arguments in Python?",
-            options=[
-                {"id": "a", "text": "Positional arguments"},
-                {"id": "b", "text": "Keyword arguments"},
-                {"id": "c", "text": "Named pointers"},
-                {"id": "d", "text": "Default parameter values"},
-            ],
-            correct_answers=["a", "b", "d"], points=2,
-        )
-        db.add_all([qf1, qf2, qf3])
-        print("[+] Created 2 quizzes with 6 questions.")
+        ch_oc1a = Chapter(course_id=course_oc1.id, title="Sentence Structure", position=1)
+        ch_oc1b = Chapter(course_id=course_oc1.id, title="Verb Tenses", position=2)
+        db.add_all([ch_oc1a, ch_oc1b])
+        await db.flush()
+        lessons_oc1a = [
+            _make_text_lesson(ch_oc1a.id, "Welcome to the Online Course", 1,
+                "<p>Overview of the OC program: self-paced lessons, quizzes, and AI review.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_oc1a.id, "Nouns and Articles", 2,
+                "<p>Using definite and indefinite articles correctly with singular and plural nouns.</p>"),
+        ]
+        lessons_oc1b = [
+            _make_text_lesson(ch_oc1b.id, "Simple Present Tense", 1,
+                "<p>Forming and using the simple present for habits, routines, and facts.</p>"),
+            _make_text_lesson(ch_oc1b.id, "Simple Past Tense", 2,
+                "<p>Regular and irregular past tense verbs with practice exercises.</p>"),
+        ]
+        db.add_all(lessons_oc1a + lessons_oc1b)
+        await db.flush()
 
-        # ── Assignments ───────────────────────────────────────────────────────
-        asgn_fizzbuzz = Assignment(
-            lesson_id=l7_asgn_lesson.id,
-            title="FizzBuzz Challenge",
-            instructions=(
-                "Write a Python script that prints numbers 1–100, replacing multiples of 3 "
-                "with `Fizz`, multiples of 5 with `Buzz`, and multiples of both with `FizzBuzz`. "
-                "Upload your `.py` file."
+        # OC — Course 2: Practical Vocabulary
+        course_oc2 = Course(
+            slug="practical-vocabulary",
+            title="Practical Vocabulary",
+            description="Everyday English vocabulary for work, travel, and daily life.",
+            category_id=cat_language.id,
+            level="beginner",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
+        )
+        db.add(course_oc2)
+        await db.flush()
+
+        ch_oc2a = Chapter(course_id=course_oc2.id, title="Workplace English", position=1)
+        ch_oc2b = Chapter(course_id=course_oc2.id, title="Travel English", position=2)
+        db.add_all([ch_oc2a, ch_oc2b])
+        await db.flush()
+        lessons_oc2a = [
+            _make_text_lesson(ch_oc2a.id, "Emails and Meetings", 1,
+                "<p>Essential vocabulary for professional emails and workplace meetings.</p>"),
+            _make_text_lesson(ch_oc2a.id, "Asking for Help", 2,
+                "<p>Polite expressions for requesting assistance and clarification at work.</p>"),
+        ]
+        lessons_oc2b = [
+            _make_text_lesson(ch_oc2b.id, "At the Airport", 1,
+                "<p>Check-in, security, and boarding vocabulary for international travel.</p>"),
+            _make_text_lesson(ch_oc2b.id, "Restaurants and Hotels", 2,
+                "<p>Ordering food, making reservations, and handling travel situations confidently.</p>"),
+        ]
+        db.add_all(lessons_oc2a + lessons_oc2b)
+        await db.flush()
+
+        # OC — Course 3: AI Review Practice
+        course_oc3 = Course(
+            slug="ai-review-practice",
+            title="AI Review Practice",
+            description="Adaptive AI-personalized review activities based on your quiz performance.",
+            category_id=cat_language.id,
+            level="beginner",
+            status="published",
+            display_instructor_name="XOXO Education Team",
+            created_by=admin.id,
+        )
+        db.add(course_oc3)
+        await db.flush()
+
+        ch_oc3a = Chapter(course_id=course_oc3.id, title="AI-Powered Review", position=1)
+        ch_oc3b = Chapter(course_id=course_oc3.id, title="Progress Check", position=2)
+        db.add_all([ch_oc3a, ch_oc3b])
+        await db.flush()
+        lessons_oc3a = [
+            _make_text_lesson(ch_oc3a.id, "How AI Review Works", 1,
+                "<p>Understanding how the platform personalizes your practice based on past performance.</p>",
+                is_free_preview=True),
+            _make_text_lesson(ch_oc3a.id, "Grammar Patterns Review", 2,
+                "<p>AI-selected grammar exercises tailored to your weakest areas.</p>"),
+        ]
+        lessons_oc3b = [
+            _make_text_lesson(ch_oc3b.id, "Vocabulary Recall Drills", 1,
+                "<p>Spaced-repetition vocabulary practice using your learning history.</p>"),
+            _make_text_lesson(ch_oc3b.id, "Final Practice Assessment", 2,
+                "<p>Comprehensive adaptive quiz covering all OC program content.</p>"),
+        ]
+        db.add_all(lessons_oc3a + lessons_oc3b)
+        await db.flush()
+        print("[+] Created 7 courses with chapters and lessons (PT×2, FE×2, OC×3).")
+
+        # ── Program Steps ─────────────────────────────────────────────────────
+        db.add_all([
+            ProgramStep(program_id=prog_pt.id, course_id=course_pt1.id, position=1, is_required=True),
+            ProgramStep(program_id=prog_pt.id, course_id=course_pt2.id, position=2, is_required=True),
+            ProgramStep(program_id=prog_fe.id, course_id=course_fe1.id, position=1, is_required=True),
+            ProgramStep(program_id=prog_fe.id, course_id=course_fe2.id, position=2, is_required=True),
+            ProgramStep(program_id=prog_oc.id, course_id=course_oc1.id, position=1, is_required=True),
+            ProgramStep(program_id=prog_oc.id, course_id=course_oc2.id, position=2, is_required=True),
+            ProgramStep(program_id=prog_oc.id, course_id=course_oc3.id, position=3, is_required=True),
+        ])
+        await db.flush()
+        print("[+] Created program steps (PT×2, FE×2, OC×3).")
+
+        # ── Placement ─────────────────────────────────────────────────────────
+        # Alice: B1 → PT
+        attempt_alice = PlacementAttempt(
+            user_id=alice.id,
+            answers={"q1": "b", "q2": "a", "q3": "c", "q4": "b", "q5": "a"},
+            score=18,
+            started_at=now - timedelta(days=35),
+            completed_at=now - timedelta(days=35),
+        )
+        # Bob: A2 → OC
+        attempt_bob = PlacementAttempt(
+            user_id=bob.id,
+            answers={"q1": "a", "q2": "b", "q3": "a", "q4": "a", "q5": "b"},
+            score=8,
+            started_at=now - timedelta(days=30),
+            completed_at=now - timedelta(days=30),
+        )
+        # Carol: C1 → FE
+        attempt_carol = PlacementAttempt(
+            user_id=carol.id,
+            answers={"q1": "c", "q2": "b", "q3": "c", "q4": "c", "q5": "b"},
+            score=28,
+            started_at=now - timedelta(days=28),
+            completed_at=now - timedelta(days=28),
+        )
+        db.add_all([attempt_alice, attempt_bob, attempt_carol])
+        await db.flush()
+
+        db.add_all([
+            PlacementResult(
+                user_id=alice.id,
+                attempt_id=attempt_alice.id,
+                program_id=prog_pt.id,
+                level="B1",
+                is_override=False,
             ),
-            allowed_extensions=["py"],
-            max_file_size_bytes=1_048_576,
-        )
-        asgn_calc = Assignment(
-            lesson_id=l11_asgn_lesson.id,
-            title="Build a Calculator",
-            instructions=(
-                "Create a Python module `calculator.py` with functions `add`, `subtract`, "
-                "`multiply`, and `divide`. Handle division by zero with a descriptive error message."
+            PlacementResult(
+                user_id=bob.id,
+                attempt_id=attempt_bob.id,
+                program_id=prog_oc.id,
+                level="A2",
+                is_override=False,
             ),
-            allowed_extensions=["py"],
-            max_file_size_bytes=1_048_576,
-        )
-        db.add_all([asgn_fizzbuzz, asgn_calc])
+            PlacementResult(
+                user_id=carol.id,
+                attempt_id=attempt_carol.id,
+                program_id=prog_fe.id,
+                level="C1",
+                is_override=False,
+            ),
+        ])
         await db.flush()
+        print("[+] Created placement attempts and results.")
 
-        # ── Enrollment & Payment ──────────────────────────────────────────────
-        enrollment = Enrollment(
-            user_id=student.id,
-            course_id=course.id,
+        # ── Program Enrollments ───────────────────────────────────────────────
+        pe_alice = ProgramEnrollment(
+            user_id=alice.id,
+            program_id=prog_pt.id,
             status="active",
-            payment_id="pi_test_student_py_001",
         )
-        db.add(enrollment)
+        pe_bob = ProgramEnrollment(
+            user_id=bob.id,
+            program_id=prog_oc.id,
+            status="active",
+        )
+        pe_carol = ProgramEnrollment(
+            user_id=carol.id,
+            program_id=prog_fe.id,
+            status="active",
+        )
+        db.add_all([pe_alice, pe_bob, pe_carol])
+        await db.flush()
+        print("[+] Created program enrollments (alice→PT, bob→OC, carol→FE).")
 
-        db.add(Payment(
-            user_id=student.id,
-            course_id=course.id,
-            amount_cents=2699,  # WELCOME10 applied
-            currency="usd",
+        # ── Course Enrollments (for unlock engine) ────────────────────────────
+        # Alice has completed PT step 1 (course_pt1), so she needs an Enrollment row.
+        enr_alice_pt1 = Enrollment(
+            user_id=alice.id,
+            course_id=course_pt1.id,
             status="completed",
-            provider="stripe",
-            provider_payment_id="pi_test_student_py_001",
-        ))
+        )
+        # Bob is on OC step 1 — active enrollment
+        enr_bob_oc1 = Enrollment(
+            user_id=bob.id,
+            course_id=course_oc1.id,
+            status="active",
+        )
+        # Carol is on FE step 1 — active enrollment
+        enr_carol_fe1 = Enrollment(
+            user_id=carol.id,
+            course_id=course_fe1.id,
+            status="active",
+        )
+        db.add_all([enr_alice_pt1, enr_bob_oc1, enr_carol_fe1])
         await db.flush()
 
         # ── Lesson Progress ───────────────────────────────────────────────────
-        # Ch1: all done. Ch2: lessons done, quiz done, assignment done.
-        # Ch3: first two lessons done, quiz in progress (submitted), assignment pending.
-        db.add_all([
-            LessonProgress(user_id=student.id, lesson_id=l1.id, status="completed", completed_at=now - timedelta(days=14)),
-            LessonProgress(user_id=student.id, lesson_id=l2.id, status="completed", completed_at=now - timedelta(days=13)),
-            LessonProgress(user_id=student.id, lesson_id=l3.id, status="completed", completed_at=now - timedelta(days=12)),
-            LessonProgress(user_id=student.id, lesson_id=l4.id, status="completed", completed_at=now - timedelta(days=10)),
-            LessonProgress(user_id=student.id, lesson_id=l5.id, status="completed", completed_at=now - timedelta(days=9)),
-            LessonProgress(user_id=student.id, lesson_id=l6_quiz_lesson.id, status="completed", completed_at=now - timedelta(days=9)),
-            LessonProgress(user_id=student.id, lesson_id=l7_asgn_lesson.id, status="completed", completed_at=now - timedelta(days=8)),
-            LessonProgress(user_id=student.id, lesson_id=l8.id, status="completed", completed_at=now - timedelta(days=5)),
-            LessonProgress(user_id=student.id, lesson_id=l9.id, status="completed", completed_at=now - timedelta(days=4)),
-            LessonProgress(user_id=student.id, lesson_id=l10_quiz_lesson.id, status="in_progress"),
-        ])
-        await db.flush()
-
-        # ── Quiz Submissions & AI Feedback ────────────────────────────────────
-        # Control Flow Quiz: failed attempt 1, passed attempt 2
-        sub_cf_fail = QuizSubmission(
-            user_id=student.id, quiz_id=quiz_cf.id, attempt_number=1,
-            answers={str(q1.id): ["a"], str(q2.id): ["a"], str(q3.id): ["a"]},
-            score=0, max_score=4, passed=False,
-        )
-        db.add(sub_cf_fail)
-        await db.flush()
-
-        db.add_all([
-            QuizFeedback(
-                submission_id=sub_cf_fail.id, question_id=q1.id,
-                feedback_text="Not quite! The correct keyword is `if`. `when` is not a Python keyword — you may be thinking of other languages. Try reviewing the If Statements lesson.",
-            ),
-            QuizFeedback(
-                submission_id=sub_cf_fail.id, question_id=q2.id,
-                feedback_text="Remember, Python has two loop constructs: `for` and `while`. `repeat` and `loop` don't exist in Python.",
-            ),
-            QuizFeedback(
-                submission_id=sub_cf_fail.id, question_id=q3.id,
-                feedback_text="`range(3)` starts at 0 by default and goes up to (but not including) 3, so it produces 0, 1, 2.",
-            ),
-        ])
-
-        sub_cf_pass = QuizSubmission(
-            user_id=student.id, quiz_id=quiz_cf.id, attempt_number=2,
-            answers={str(q1.id): ["b"], str(q2.id): ["a", "b"], str(q3.id): ["b"]},
-            score=4, max_score=4, passed=True,
-        )
-        db.add(sub_cf_pass)
-        await db.flush()
-
-        db.add_all([
-            QuizFeedback(
-                submission_id=sub_cf_pass.id, question_id=q1.id,
-                feedback_text="Correct! `if` is exactly the keyword you need. Great improvement from your last attempt!",
-            ),
-            QuizFeedback(
-                submission_id=sub_cf_pass.id, question_id=q2.id,
-                feedback_text="Perfect — both `for` and `while` are Python's loop keywords. Well done!",
-            ),
-            QuizFeedback(
-                submission_id=sub_cf_pass.id, question_id=q3.id,
-                feedback_text="Exactly right. `range(n)` always starts at 0 and produces n values. You've got it!",
-            ),
-        ])
-
-        # Functions Quiz: one passing submission
-        sub_fn = QuizSubmission(
-            user_id=student.id, quiz_id=quiz_fn.id, attempt_number=1,
-            answers={str(qf1.id): ["c"], str(qf2.id): ["b"], str(qf3.id): ["a", "b", "d"]},
-            score=4, max_score=4, passed=True,
-        )
-        db.add(sub_fn)
-        await db.flush()
-
-        db.add_all([
-            QuizFeedback(
-                submission_id=sub_fn.id, question_id=qf1.id,
-                feedback_text="Correct! `def` is the keyword used to define functions in Python.",
-            ),
-            QuizFeedback(
-                submission_id=sub_fn.id, question_id=qf2.id,
-                feedback_text="Exactly right. A function with no `return` statement implicitly returns `None`.",
-            ),
-            QuizFeedback(
-                submission_id=sub_fn.id, question_id=qf3.id,
-                feedback_text="Perfect! Positional, keyword, and default parameter values are all valid — great job getting all three.",
-            ),
-        ])
-        print("[+] Created 3 quiz submissions with AI feedback.")
-
-        # ── Assignment Submissions ─────────────────────────────────────────────
-        db.add_all([
-            # FizzBuzz — graded
-            AssignmentSubmission(
-                user_id=student.id,
-                assignment_id=asgn_fizzbuzz.id,
-                file_key="assignments/student/fizzbuzz.py",
-                file_name="fizzbuzz.py",
-                file_size=512,
-                mime_type="text/x-python",
-                scan_status="clean",
-                submitted_at=now - timedelta(days=8),
-                attempt_number=1,
-                grade_score=92.0,
-                grade_feedback="Great work! Logic is correct and the output is clean. Consider using f-strings for even more readable output.",
-                grade_published_at=now - timedelta(days=6),
-                graded_by=admin.id,
-            ),
-            # Calculator — submitted, not yet graded
-            AssignmentSubmission(
-                user_id=student.id,
-                assignment_id=asgn_calc.id,
-                file_key="assignments/student/calculator.py",
-                file_name="calculator.py",
-                file_size=876,
-                mime_type="text/x-python",
-                scan_status="clean",
-                submitted_at=now - timedelta(days=1),
-                attempt_number=1,
-            ),
-        ])
-        print("[+] Created 2 assignment submissions (1 graded, 1 pending).")
-
-        # ── Certificate ───────────────────────────────────────────────────────
-        # Student has effectively completed ch1 + ch2; pending request for full cert
-        db.add(CertificateRequest(
-            user_id=student.id,
-            course_id=course.id,
-            status="pending",
+        # Alice: all lessons in PT step 1 completed
+        for lesson in lessons_pt1:
+            db.add(LessonProgress(
+                user_id=alice.id,
+                lesson_id=lesson.id,
+                status="completed",
+                completed_at=now - timedelta(days=7),
+            ))
+        # Bob: first lesson of OC step 1 completed
+        db.add(LessonProgress(
+            user_id=bob.id,
+            lesson_id=lessons_oc1a[0].id,
+            status="completed",
+            completed_at=now - timedelta(days=3),
         ))
-
-        # A certificate issued earlier for a completed run (simulates completion)
-        cert = Certificate(
-            user_id=student.id,
-            course_id=course.id,
-            verification_token=secrets.token_urlsafe(32),
-            pdf_url="https://example.com/certificates/student-python-for-beginners.pdf",
-        )
-        db.add(cert)
+        # Carol: first 2 lessons of FE step 1 completed
+        for lesson in lessons_fe1[:2]:
+            db.add(LessonProgress(
+                user_id=carol.id,
+                lesson_id=lesson.id,
+                status="completed",
+                completed_at=now - timedelta(days=5),
+            ))
         await db.flush()
-        print("[+] Created 1 certificate and 1 pending request.")
+        print("[+] Created lesson progress records.")
 
-        # ── Announcements ─────────────────────────────────────────────────────
+        # ── Batches (capacity=15) ─────────────────────────────────────────────
+        batch_pt_a = Batch(
+            program_id=prog_pt.id,
+            title="PT Spring 2026 — Cohort A",
+            status="active",
+            timezone="America/Sao_Paulo",
+            starts_at=now - timedelta(days=30),
+            ends_at=now + timedelta(days=60),
+            capacity=15,
+        )
+        batch_pt_b = Batch(
+            program_id=prog_pt.id,
+            title="PT Summer 2026 — Cohort B",
+            status="upcoming",
+            timezone="America/Sao_Paulo",
+            starts_at=now + timedelta(days=14),
+            ends_at=now + timedelta(days=104),
+            capacity=15,
+        )
+        batch_fe_a = Batch(
+            program_id=prog_fe.id,
+            title="FE Spring 2026 — Cohort A",
+            status="active",
+            timezone="Europe/Lisbon",
+            starts_at=now - timedelta(days=14),
+            ends_at=now + timedelta(days=46),
+            capacity=15,
+        )
+        batch_oc_a = Batch(
+            program_id=prog_oc.id,
+            title="OC Spring 2026 — Cohort A",
+            status="active",
+            timezone="America/Toronto",
+            starts_at=now - timedelta(days=7),
+            ends_at=now + timedelta(days=83),
+            capacity=15,
+        )
+        batch_oc_b = Batch(
+            program_id=prog_oc.id,
+            title="OC Summer 2026 — Cohort B",
+            status="upcoming",
+            timezone="America/Toronto",
+            starts_at=now + timedelta(days=14),
+            ends_at=now + timedelta(days=104),
+            capacity=15,
+        )
+        db.add_all([batch_pt_a, batch_pt_b, batch_fe_a, batch_oc_a, batch_oc_b])
+        await db.flush()
+        print("[+] Created 5 batches (PT×2, FE×1, OC×2) with capacity=15.")
+
+        # ── Batch Enrollments ─────────────────────────────────────────────────
         db.add_all([
-            Announcement(
-                title="Welcome to xoxoedu!",
+            BatchEnrollment(batch_id=batch_pt_a.id, user_id=alice.id, program_enrollment_id=pe_alice.id),
+            BatchEnrollment(batch_id=batch_fe_a.id, user_id=carol.id, program_enrollment_id=pe_carol.id),
+            BatchEnrollment(batch_id=batch_oc_a.id, user_id=bob.id, program_enrollment_id=pe_bob.id),
+        ])
+        await db.flush()
+        print("[+] Created batch enrollments (alice→PT-A, carol→FE-A, bob→OC-A).")
+
+        # ── Live Sessions ─────────────────────────────────────────────────────
+        # PT Batch A — 2 sessions
+        session_pt1 = LiveSession(
+            batch_id=batch_pt_a.id,
+            title="Música e Cinema",
+            description="Discussion session on music genres and favourite films.",
+            starts_at=now - timedelta(days=7),
+            ends_at=now - timedelta(days=7) + timedelta(hours=1),
+            timezone="America/Sao_Paulo",
+            provider="google_meet",
+            join_url="https://meet.google.com/test-pt-001",
+            status="scheduled",
+        )
+        session_pt2 = LiveSession(
+            batch_id=batch_pt_a.id,
+            title="Viagens",
+            description="Sharing travel stories and discussing dream destinations.",
+            starts_at=now + timedelta(days=7),
+            ends_at=now + timedelta(days=7) + timedelta(hours=1),
+            timezone="America/Sao_Paulo",
+            provider="google_meet",
+            join_url="https://meet.google.com/test-pt-002",
+            status="scheduled",
+        )
+        # FE Batch A — 2 sessions
+        session_fe1 = LiveSession(
+            batch_id=batch_fe_a.id,
+            title="Current Events",
+            description="Discussion of this week's top news stories.",
+            starts_at=now - timedelta(days=3),
+            ends_at=now - timedelta(days=3) + timedelta(hours=1),
+            timezone="Europe/Lisbon",
+            provider="zoom",
+            join_url="https://zoom.us/test-fe-001",
+            status="scheduled",
+        )
+        session_fe2 = LiveSession(
+            batch_id=batch_fe_a.id,
+            title="Tech and Society",
+            description="How technology is reshaping the world — an open discussion.",
+            starts_at=now + timedelta(days=7),
+            ends_at=now + timedelta(days=7) + timedelta(hours=1),
+            timezone="Europe/Lisbon",
+            provider="zoom",
+            join_url="https://zoom.us/test-fe-002",
+            status="scheduled",
+        )
+        # OC Batch A — 1 session (office hours / Q&A)
+        session_oc1 = LiveSession(
+            batch_id=batch_oc_a.id,
+            title="Grammar Q&A",
+            description="Live office hours to answer questions about grammar foundations.",
+            starts_at=now - timedelta(days=1),
+            ends_at=now - timedelta(days=1) + timedelta(hours=1),
+            timezone="America/Toronto",
+            provider="zoom",
+            join_url="https://zoom.us/test-oc-001",
+            status="scheduled",
+        )
+        db.add_all([session_pt1, session_pt2, session_fe1, session_fe2, session_oc1])
+        await db.flush()
+        print("[+] Created 5 live sessions (PT×2, FE×2, OC×1).")
+
+        # ── Session Attendance (past sessions only) ───────────────────────────
+        db.add_all([
+            SessionAttendance(session_id=session_pt1.id, user_id=alice.id, status="present"),
+            SessionAttendance(session_id=session_fe1.id, user_id=carol.id, status="present"),
+            SessionAttendance(session_id=session_oc1.id, user_id=bob.id, status="absent"),
+        ])
+        await db.flush()
+        print("[+] Created session attendance records.")
+
+        # ── Batch Transfer Request ────────────────────────────────────────────
+        db.add(BatchTransferRequest(
+            user_id=bob.id,
+            from_batch_id=batch_oc_a.id,
+            to_batch_id=batch_oc_b.id,
+            status="pending",
+            reason="My schedule changed and I need a later cohort start date.",
+        ))
+        await db.flush()
+        print("[+] Created batch transfer request (bob: OC-A → OC-B, pending).")
+
+        # ── Notifications ─────────────────────────────────────────────────────
+        db.add_all([
+            # Carol: payment overdue reminder
+            Notification(
+                recipient_id=carol.id,
+                type=NotificationType.PAYMENT_DUE_SOON,
+                title="Your payment is overdue",
                 body=(
-                    "We're excited to have you here. New courses are added every month — "
-                    "check the catalogue and get started today!"
+                    f"Your subscription payment of €14.90 was due on "
+                    f"{(today - timedelta(days=15)).strftime('%B %d, %Y')}. "
+                    "Please update your payment method to maintain access."
                 ),
-                scope="platform",
-                created_by=admin.id,
-                sent_at=now - timedelta(days=30),
+                actor_summary="XOXO Education",
+                target_url="/home/account",
+                event_metadata={
+                    "subscription_id": str(sub_carol.id),
+                    "billing_cycle_id": str(cycle_carol.id),
+                    "amount_cents": 1490,
+                    "currency": "EUR",
+                },
             ),
-            Announcement(
-                title="Python for Beginners — Chapter 3 is live",
-                body=(
-                    "Chapter 3: Functions is now published! Head back to your course "
-                    "dashboard — two new lessons and a graded assignment are waiting."
-                ),
-                scope="course",
-                course_id=course.id,
-                created_by=admin.id,
-                sent_at=now - timedelta(days=5),
+            # Bob: batch transfer update
+            Notification(
+                recipient_id=bob.id,
+                type=NotificationType.LIVE_SESSION_REMINDER,
+                title="Transfer request received",
+                body="Your request to transfer to OC Summer 2026 — Cohort B has been received and is under review.",
+                actor_summary="XOXO Education",
+                target_url="/home/batch",
+                event_metadata={
+                    "from_batch_id": str(batch_oc_a.id),
+                    "to_batch_id": str(batch_oc_b.id),
+                },
             ),
-            # Draft announcement (not yet sent)
-            Announcement(
-                title="Spring sale — 20% off all courses",
-                body="Use code SPRING20 at checkout this week only.",
-                scope="platform",
-                created_by=admin.id,
-                sent_at=None,
+            # Alice: program milestone
+            Notification(
+                recipient_id=alice.id,
+                type=NotificationType.GRADE_PUBLISHED,
+                title="Step 1 complete — well done!",
+                body="You've finished Conversation Basics. Step 2 (Real-World Topics) is now unlocked.",
+                actor_summary="XOXO Education",
+                target_url="/programs/PT",
+                event_metadata={
+                    "program_id": str(prog_pt.id),
+                    "completed_step_position": 1,
+                },
             ),
-        ])
-        print("[+] Created 3 announcements (2 sent, 1 draft).")
-
-        # ── Notes & Bookmarks ────────────────────────────────────────────────
-        db.add_all([
-            UserNote(user_id=student.id, lesson_id=l2.id, content="Add Python to PATH on Windows — don't forget this step!"),
-            UserNote(user_id=student.id, lesson_id=l4.id, content="`elif` is Python's version of else-if. Cleaner than nested ifs."),
-            UserNote(user_id=student.id, lesson_id=l9.id, content="Default mutable args are a trap — use None as default and initialise inside the function."),
-        ])
-        db.add_all([
-            UserBookmark(user_id=student.id, lesson_id=l5.id),
-            UserBookmark(user_id=student.id, lesson_id=l9.id),
-        ])
-        print("[+] Created 3 notes and 2 bookmarks.")
-
-        # ── AI Usage Log ──────────────────────────────────────────────────────
-        db.add_all([
-            AIUsageLog(
-                user_id=student.id, course_id=course.id,
-                feature="quiz_feedback", tokens_in=420, tokens_out=310,
-                model="gemini/gemini-2.0-flash",
-            ),
-            AIUsageLog(
-                user_id=student.id, course_id=course.id,
-                feature="quiz_feedback", tokens_in=380, tokens_out=290,
-                model="gemini/gemini-2.0-flash",
-            ),
-            AIUsageLog(
-                user_id=student.id, course_id=course.id,
-                feature="quiz_feedback", tokens_in=400, tokens_out=320,
-                model="gemini/gemini-2.0-flash",
+            # Carol: upcoming session reminder
+            Notification(
+                recipient_id=carol.id,
+                type=NotificationType.LIVE_SESSION_REMINDER,
+                title="Live session tomorrow: Tech and Society",
+                body="Your FE discussion group meets tomorrow. Topic: Tech and Society. Join link is ready.",
+                actor_summary="XOXO Education",
+                target_url="/home/calendar",
+                event_metadata={
+                    "session_id": str(session_fe2.id),
+                    "batch_id": str(batch_fe_a.id),
+                },
             ),
         ])
-
         await db.commit()
-        print("[+] Created AI usage budget and 3 usage log entries.")
+        print("[+] Created 4 notifications.")
 
+        # ── Summary ───────────────────────────────────────────────────────────
         print()
         print("Seed complete.")
         print()
         print("  Credentials")
         print("  ─────────────────────────────────────────────────────────")
-        print("  admin@xoxoedu.com   / admin123     role: admin")
-        print("  student@xoxoedu.com / password123  role: student (active, in progress)")
+        print("  admin@xoxoedu.com   / Admin1234!    role: admin")
+        print("  alice@student.com   / Student1234!  role: student (PT, active, step 2)")
+        print("  bob@student.com     / Student1234!  role: student (OC, active, pending transfer)")
+        print("  carol@student.com   / Student1234!  role: student (FE, past_due subscription)")
+        print()
+        print("  Programs")
+        print("  ─────────────────────────────────────────────────────────")
+        print("  PT  Portuguese Program       — 2 steps, 1 active batch")
+        print("  FE  Fluent English Program   — 2 steps, 1 active batch")
+        print("  OC  Online Course            — 3 steps, 1 active + 1 upcoming batch")
 
     await engine.dispose()
 
 
 if __name__ == "__main__":
     reset = "--reset" in sys.argv
+    _assert_migrations_current()
     asyncio.run(main(reset=reset))

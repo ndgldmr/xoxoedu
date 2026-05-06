@@ -11,6 +11,8 @@ Tasks in this module are registered via a direct import in ``celery_app.py``
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app.worker.celery_app import celery_app
 
 # ── Stuck-transcript recovery ──────────────────────────────────────────────────
@@ -82,3 +84,36 @@ def retry_stuck_transcriptions(self) -> None:
         logging.getLogger(__name__).info(
             "retry_stuck_transcriptions: re-enqueued %d lesson(s)", enqueued
         )
+
+
+@celery_app.task(bind=True, ignore_result=True, max_retries=0)  # type: ignore[misc]
+def enqueue_billing_due_reminders(self) -> None:
+    """Find eligible billing cycles and enqueue one reminder task per cycle."""
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+
+    from app.config import settings
+    from app.db.models.subscription import BillingCycle, Subscription
+    from app.modules.notifications.service import billing_reminder_target_date
+    from app.modules.notifications.tasks import send_billing_cycle_reminder
+
+    today = datetime.now(UTC).date()
+    target_due_date = billing_reminder_target_date(today)
+    engine = create_engine(settings.DATABASE_URL_SYNC)
+
+    with Session(engine) as db:
+        cycle_ids = db.execute(
+            select(BillingCycle.id)
+            .join(Subscription, Subscription.id == BillingCycle.subscription_id)
+            .where(
+                BillingCycle.status == "pending",
+                BillingCycle.due_date == target_due_date,
+                BillingCycle.reminder_sent_at.is_(None),
+                Subscription.status != "canceled",
+            )
+        ).scalars().all()
+
+    engine.dispose()
+
+    for cycle_id in cycle_ids:
+        send_billing_cycle_reminder.delay(str(cycle_id))

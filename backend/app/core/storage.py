@@ -72,6 +72,27 @@ def generate_presigned_put(key: str, content_type: str, expires_in: int = 300) -
     )
 
 
+def generate_presigned_get(key: str, expires_in: int = 300) -> str:
+    """Return a presigned GET URL for downloading a file directly from R2.
+
+    Args:
+        key: The R2 object key (path within the bucket).
+        expires_in: URL validity in seconds (default 300 = 5 minutes).
+
+    Returns:
+        A presigned URL string the client can GET to download the file.
+    """
+    client = get_r2_client()
+    return client.generate_presigned_url(  # type: ignore[union-attr]
+        "get_object",
+        Params={
+            "Bucket": settings.R2_BUCKET,
+            "Key": key,
+        },
+        ExpiresIn=expires_in,
+    )
+
+
 def get_public_url(key: str) -> str:
     """Return the public URL for a stored object.
 

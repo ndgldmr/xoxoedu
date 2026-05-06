@@ -28,6 +28,27 @@ class AssignmentIn(BaseModel):
     allowed_extensions: list[str] = Field(default_factory=list)
 
 
+class AssignmentUpdateIn(BaseModel):
+    """Partial-update payload for an existing assignment.
+
+    Only fields present in the request body are applied; omitted fields retain
+    their current values.
+
+    Attributes:
+        title: Replacement display name; must be non-empty when provided.
+        instructions: Replacement assignment brief (may contain Markdown);
+            must be non-empty when provided.
+        max_file_size_bytes: Replacement upload size limit in bytes.
+        allowed_extensions: Replacement permitted file extension list;
+            an empty list removes all restrictions.
+    """
+
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    instructions: str | None = Field(default=None, min_length=1)
+    max_file_size_bytes: int | None = Field(default=None, ge=1)
+    allowed_extensions: list[str] | None = None
+
+
 class AssignmentOut(BaseModel):
     """Full assignment representation returned to clients.
 

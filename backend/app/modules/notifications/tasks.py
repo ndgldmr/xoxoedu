@@ -1,4 +1,4 @@
-"""Celery tasks for notification email delivery."""
+"""Celery tasks for notification email delivery and billing reminders."""
 
 import logging
 import uuid
@@ -6,8 +6,12 @@ from contextlib import suppress
 from datetime import UTC, datetime
 from html import escape
 
+import redis as sync_redis
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
+
 from app.worker.celery_app import celery_app
-from app.worker.retry import critical_backoff
+from app.worker.retry import bulk_backoff, critical_backoff
 
 logger = logging.getLogger(__name__)
 _DELIVERY_ERROR_LIMIT = 1000
@@ -46,6 +50,10 @@ def _render_notification_email(
         "mention": f"{actor_summary} mentioned you in a discussion",
         "grade_published": "Your assignment grade has been published",
         "certificate_issued": "Your certificate is ready — XOXO Education",
+        "live_session_reminder": title,
+        "payment_due_soon": title,
+        "payment_processed": title,
+        "payment_failed": title,
     }
     subject = " ".join(_SUBJECTS.get(notification_type, title).splitlines())
 
@@ -54,6 +62,10 @@ def _render_notification_email(
         "mention": "View Post",
         "grade_published": "View Grade",
         "certificate_issued": "View Certificate",
+        "live_session_reminder": "View Calendar",
+        "payment_due_soon": "View Billing",
+        "payment_processed": "View Billing",
+        "payment_failed": "View Billing",
     }
     cta_label = _CTA_LABELS.get(notification_type, "View")
     safe_title = escape(title, quote=True)
@@ -134,10 +146,6 @@ def send_notification_email(self, notification_id: str) -> None:
         notification_id: String UUID of the ``Notification`` row to deliver.
     """
     try:
-        import redis as sync_redis
-        from sqlalchemy import create_engine, select
-        from sqlalchemy.orm import Session
-
         from app.config import settings
         from app.db.models.notification import (
             Notification,
@@ -259,3 +267,176 @@ def send_notification_email(self, notification_id: str) -> None:
             extra={"notification_id": notification_id},
         )
         raise self.retry(exc=exc, countdown=critical_backoff(self.request.retries)) from exc
+
+
+def _publish_notification_sync(notification_id: str) -> None:
+    """Best-effort publish of a persisted notification to the user's SSE channel."""
+    from app.config import settings
+    from app.db.models.notification import Notification
+    from app.modules.notifications.service import notification_to_out
+
+    rdb = sync_redis.from_url(settings.REDIS_URL, decode_responses=True)
+    engine = create_engine(settings.DATABASE_URL_SYNC)
+    try:
+        with Session(engine) as db:
+            notif = db.scalar(
+                select(Notification).where(Notification.id == uuid.UUID(notification_id))
+            )
+            if not notif:
+                return
+            payload = notification_to_out(notif).model_dump_json()
+            channel = f"notifications:user:{notif.recipient_id}"
+            with suppress(Exception):
+                rdb.publish(channel, payload)
+    finally:
+        engine.dispose()
+
+
+def _record_billing_delivery_state(notification_id: str) -> None:
+    """Mirror the existing notification delivery flow for sync billing tasks."""
+    from app.config import settings
+    from app.db.models.notification import (
+        Notification,
+        NotificationDelivery,
+        NotificationPreference,
+    )
+    from app.db.models.user import User
+    from app.modules.notifications.constants import (
+        DEFAULT_EMAIL_ENABLED,
+        NotificationChannel,
+        NotificationDeliveryStatus,
+    )
+
+    engine = create_engine(settings.DATABASE_URL_SYNC)
+    try:
+        with Session(engine) as db:
+            notif = db.scalar(
+                select(Notification).where(Notification.id == uuid.UUID(notification_id))
+            )
+            if notif is None:
+                return
+
+            delivery = db.scalar(
+                select(NotificationDelivery).where(
+                    NotificationDelivery.notification_id == notif.id,
+                    NotificationDelivery.channel == NotificationChannel.EMAIL.value,
+                )
+            )
+            if delivery is None:
+                delivery = NotificationDelivery(
+                    notification_id=notif.id,
+                    channel=NotificationChannel.EMAIL.value,
+                    status=NotificationDeliveryStatus.QUEUED.value,
+                )
+                db.add(delivery)
+                db.flush()
+
+            if delivery.status == NotificationDeliveryStatus.SENT.value:
+                return
+
+            user = db.get(User, notif.recipient_id)
+            if not user or not user.email:
+                delivery.status = NotificationDeliveryStatus.SKIPPED.value
+                delivery.failed_at = None
+                delivery.last_error = "recipient email unavailable"
+                db.commit()
+                return
+
+            pref = db.scalar(
+                select(NotificationPreference).where(
+                    NotificationPreference.user_id == notif.recipient_id,
+                    NotificationPreference.notification_type == notif.type,
+                )
+            )
+            email_enabled = pref.email_enabled if pref is not None else DEFAULT_EMAIL_ENABLED
+            if not email_enabled:
+                delivery.status = NotificationDeliveryStatus.SKIPPED.value
+                delivery.failed_at = None
+                delivery.last_error = "email preference disabled"
+                db.commit()
+                return
+
+            delivery.status = NotificationDeliveryStatus.QUEUED.value
+            delivery.queued_at = delivery.queued_at or datetime.now(UTC)
+            delivery.failed_at = None
+            delivery.last_error = None
+            db.commit()
+
+            try:
+                send_notification_email.delay(notification_id)
+            except Exception as exc:
+                delivery.status = NotificationDeliveryStatus.FAILED.value
+                delivery.failed_at = datetime.now(UTC)
+                delivery.last_error = _truncate_error(exc)
+                db.commit()
+    finally:
+        engine.dispose()
+
+
+@celery_app.task(  # type: ignore[misc]
+    bind=True,
+    ignore_result=True,
+    max_retries=3,
+    soft_time_limit=30,
+    time_limit=45,
+)
+def send_billing_cycle_reminder(self, billing_cycle_id: str) -> None:
+    """Create exactly one due-soon notification for an eligible billing cycle."""
+    try:
+        from app.config import settings
+        from app.db.models.subscription import BillingCycle, Subscription
+        from app.modules.notifications import service as notification_service
+
+        engine = create_engine(settings.DATABASE_URL_SYNC)
+        notification_id: str | None = None
+        try:
+            with Session(engine) as db:
+                cycle = db.scalar(
+                    select(BillingCycle)
+                    .where(BillingCycle.id == uuid.UUID(billing_cycle_id))
+                    .with_for_update()
+                )
+                if cycle is None:
+                    return
+
+                subscription = db.get(Subscription, cycle.subscription_id)
+                if subscription is None:
+                    return
+
+                today = datetime.now(UTC).date()
+                if not notification_service.billing_reminder_eligible(
+                    cycle_status=cycle.status,
+                    due_date=cycle.due_date,
+                    reminder_sent_at=cycle.reminder_sent_at,
+                    subscription_status=subscription.status,
+                    today=today,
+                ):
+                    return
+
+                notification = notification_service.build_payment_due_soon_notification(
+                    recipient_id=subscription.user_id,
+                    subscription_id=subscription.id,
+                    billing_cycle_id=cycle.id,
+                    due_date=cycle.due_date,
+                    amount_cents=cycle.amount_cents,
+                    currency=cycle.currency,
+                    provider_invoice_id=cycle.provider_invoice_id,
+                )
+                db.add(notification)
+                cycle.reminder_sent_at = datetime.now(UTC)
+                db.commit()
+                db.refresh(notification)
+                notification_id = str(notification.id)
+        finally:
+            engine.dispose()
+
+        if notification_id is None:
+            return
+        _record_billing_delivery_state(notification_id)
+        _publish_notification_sync(notification_id)
+    except Exception as exc:
+        logger.exception(
+            "Billing reminder task failed",
+            extra={"billing_cycle_id": billing_cycle_id},
+        )
+        raise self.retry(exc=exc, countdown=bulk_backoff(self.request.retries)) from exc

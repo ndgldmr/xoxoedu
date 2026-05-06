@@ -53,7 +53,7 @@ async def notification_stream_events(
             await pubsub.aclose()
 
 
-@router.get("/notifications")
+@router.get("/users/me/notifications")
 async def list_notifications(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_verified_user),
@@ -73,7 +73,7 @@ async def list_notifications(
     )
 
 
-@router.post("/notifications/read-all")
+@router.post("/users/me/notifications/read-all")
 async def mark_all_notifications_read(
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_verified_user),
@@ -83,7 +83,7 @@ async def mark_all_notifications_read(
     return ok({"marked_read": marked_read})
 
 
-@router.patch("/notification-prefs")
+@router.patch("/users/me/notification-prefs")
 async def update_notification_preferences(
     body: NotificationPrefsPatchIn,
     db: AsyncSession = Depends(get_db),
@@ -98,7 +98,7 @@ async def update_notification_preferences(
     return ok(prefs.model_dump())
 
 
-@router.get("/notifications/stream")
+@router.get("/users/me/notifications/stream")
 async def stream_notifications(
     current_user: User = Depends(get_current_verified_user),
 ) -> EventSourceResponse:
@@ -114,7 +114,7 @@ async def stream_notifications(
 
     Clients should reconnect automatically (the browser ``EventSource`` API
     does this by default) and combine the stream with
-    ``GET /api/v1/notifications`` to recover any missed items.
+    ``GET /api/v1/users/me/notifications`` to recover any missed items.
 
     Args:
         current_user: Authenticated, verified user.

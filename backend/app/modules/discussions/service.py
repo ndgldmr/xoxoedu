@@ -655,21 +655,22 @@ async def delete_post(
 
 # ── Public service functions — voting ──────────────────────────────────────────
 
-async def toggle_upvote(
+async def set_upvote(
     db: AsyncSession,
     user: User,
     post_id: uuid.UUID,
+    *,
+    upvoted: bool,
 ) -> DiscussionPostOut:
-    """Toggle the current user's upvote on a discussion post.
+    """Set the current user's upvote on a discussion post idempotently.
 
-    If the user has not yet voted, an upvote is recorded.  If they have
-    already voted, the vote is removed.  Authors may not vote on their own
-    posts.
+    Authors may not vote on their own posts.
 
     Args:
         db: Async database session.
-        user: Authenticated user toggling the upvote.
-        post_id: UUID of the post to upvote or un-upvote.
+        user: Authenticated user changing the vote.
+        post_id: UUID of the post to upvote or remove an upvote from.
+        upvoted: Desired vote state.
 
     Returns:
         The updated post DTO reflecting the new vote totals.
@@ -690,10 +691,10 @@ async def toggle_upvote(
         )
     )
 
-    if existing is not None:
-        await db.delete(existing)
-    else:
+    if upvoted and existing is None:
         db.add(DiscussionPostVote(post_id=post_id, user_id=user.id))
+    elif not upvoted and existing is not None:
+        await db.delete(existing)
 
     await db.commit()
     await db.refresh(post, ["author"])
@@ -711,6 +712,26 @@ async def toggle_upvote(
         reply_count=count,
         upvote_count=upvote_count,
         viewer_has_upvoted=viewer_has_upvoted,
+    )
+
+
+async def toggle_upvote(
+    db: AsyncSession,
+    user: User,
+    post_id: uuid.UUID,
+) -> DiscussionPostOut:
+    """Toggle the current user's upvote on a discussion post."""
+    existing = await db.scalar(
+        select(DiscussionPostVote).where(
+            DiscussionPostVote.post_id == post_id,
+            DiscussionPostVote.user_id == user.id,
+        )
+    )
+    return await set_upvote(
+        db,
+        user,
+        post_id,
+        upvoted=existing is None,
     )
 
 

@@ -178,7 +178,7 @@ async def _handle_charge_refunded(db: AsyncSession, charge: dict[str, Any]) -> N
         )
     )
     if enrollment:
-        enrollment.status = "refunded"
+        enrollment.status = "unenrolled"
 
     await db.commit()
 

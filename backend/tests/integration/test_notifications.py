@@ -190,7 +190,7 @@ async def test_reply_creates_notification_for_parent_author(
     assert resp.status_code == 201
 
     feed_resp = await client.get(
-        "/api/v1/notifications",
+        "/api/v1/users/me/notifications",
         headers={"Authorization": f"Bearer {author_token}"},
     )
     assert feed_resp.status_code == 200
@@ -229,7 +229,7 @@ async def test_mention_creates_notification_for_target_user(
     assert resp.status_code == 201
 
     feed_resp = await client.get(
-        "/api/v1/notifications",
+        "/api/v1/users/me/notifications",
         headers={"Authorization": f"Bearer {target_token}"},
     )
     assert feed_resp.status_code == 200
@@ -250,7 +250,7 @@ async def test_read_all_marks_only_current_users_notifications_as_read(
     other = await _make_notification(db, recipient_id=other_user.id, title="Other")
 
     resp = await client.post(
-        "/api/v1/notifications/read-all",
+        "/api/v1/users/me/notifications/read-all",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -301,7 +301,7 @@ async def test_notification_feed_returns_unread_count_and_deterministic_order(
     )
 
     resp = await client.get(
-        "/api/v1/notifications",
+        "/api/v1/users/me/notifications",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -320,7 +320,7 @@ async def test_patch_notification_prefs_is_partial_and_idempotent(
     user, token = await _make_user(db, f"notif-prefs-{uuid.uuid4().hex[:6]}@example.com")
 
     first_resp = await client.patch(
-        "/api/v1/notification-prefs",
+        "/api/v1/users/me/notification-prefs",
         json={"mention": {"email": False}},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -331,7 +331,7 @@ async def test_patch_notification_prefs_is_partial_and_idempotent(
     assert first_data["discussion_reply"] == {"in_app": True, "email": True}
 
     second_resp = await client.patch(
-        "/api/v1/notification-prefs",
+        "/api/v1/users/me/notification-prefs",
         json={"mention": {"in_app": False}},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -400,9 +400,9 @@ async def _make_submission(
 
 @pytest.mark.asyncio
 async def test_stream_requires_authentication(client: AsyncClient, db: AsyncSession) -> None:
-    resp = await client.get("/api/v1/notifications/stream")
-    # The auth dependency returns 400 TOKEN_INVALID when no bearer token is present
-    assert resp.status_code == 400
+    resp = await client.get("/api/v1/users/me/notifications/stream")
+    # The auth dependency returns 401 TOKEN_INVALID when no bearer token is present.
+    assert resp.status_code == 401
     assert resp.json()["error"]["code"] == "TOKEN_INVALID"
 
 
@@ -493,7 +493,7 @@ async def test_disconnected_client_recovers_via_notification_poll(
 
     # Client reconnects and recovers via the polling endpoint
     resp = await client.get(
-        "/api/v1/notifications",
+        "/api/v1/users/me/notifications",
         headers={"Authorization": f"Bearer {token}"},
     )
 

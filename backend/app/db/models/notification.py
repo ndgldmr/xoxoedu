@@ -58,9 +58,9 @@ class Notification(Base, UUIDMixin):
 class NotificationPreference(Base, UUIDMixin, TimestampMixin):
     """Per-user notification delivery preferences for a notification type."""
 
-    __tablename__ = "notification_prefs"
+    __tablename__ = "notification_preferences"
     __table_args__ = (
-        UniqueConstraint("user_id", "notification_type", name="uq_notification_prefs_user_type"),
+        UniqueConstraint("user_id", "notification_type", name="uq_notification_preferences_user_type"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(

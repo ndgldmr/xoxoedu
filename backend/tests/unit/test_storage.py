@@ -3,7 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import app.core.storage as storage_module
-from app.core.storage import get_public_url
+from app.core.storage import generate_presigned_get, get_public_url
 
 
 def test_get_public_url_with_custom_domain() -> None:
@@ -72,4 +72,38 @@ def test_get_r2_client_derives_endpoint_from_account_id() -> None:
 
     _, kwargs = mock_boto.call_args
     assert kwargs["endpoint_url"] == "https://abc123.r2.cloudflarestorage.com"
+    storage_module._r2_client = None  # clean up
+
+
+def test_generate_presigned_get_calls_boto3_with_get_object() -> None:
+    """generate_presigned_get calls generate_presigned_url with 'get_object'."""
+    mock_client = MagicMock()
+    mock_client.generate_presigned_url.return_value = "https://r2.example.com/signed"
+    storage_module._r2_client = mock_client
+
+    with patch("app.core.storage.settings") as mock_settings:
+        mock_settings.R2_BUCKET = "test-bucket"
+        url = generate_presigned_get("assignments/abc/file.pdf", expires_in=120)
+
+    mock_client.generate_presigned_url.assert_called_once_with(
+        "get_object",
+        Params={"Bucket": "test-bucket", "Key": "assignments/abc/file.pdf"},
+        ExpiresIn=120,
+    )
+    assert url == "https://r2.example.com/signed"
+    storage_module._r2_client = None  # clean up
+
+
+def test_generate_presigned_get_default_expiry() -> None:
+    """generate_presigned_get defaults to 300 seconds TTL."""
+    mock_client = MagicMock()
+    mock_client.generate_presigned_url.return_value = "https://r2.example.com/signed"
+    storage_module._r2_client = mock_client
+
+    with patch("app.core.storage.settings") as mock_settings:
+        mock_settings.R2_BUCKET = "test-bucket"
+        generate_presigned_get("some/key.pdf")
+
+    _, call_kwargs = mock_client.generate_presigned_url.call_args
+    assert call_kwargs["ExpiresIn"] == 300
     storage_module._r2_client = None  # clean up

@@ -19,6 +19,8 @@ from app.db.models.user import User
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tuple[User, str]:
+    local, domain = email.split("@")
+    email = f"{local}_{uuid.uuid4().hex[:8]}@{domain}"
     user = User(
         id=uuid.uuid4(),
         email=email,
@@ -62,7 +64,7 @@ async def test_webhook_checkout_completed_creates_enrollment(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """checkout.session.completed webhook creates enrollment and sets payment completed."""
-    instructor, _ = await _make_user(db, f"instr-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, _ = await _make_user(db, f"stu-{uuid.uuid4().hex[:6]}@test.com")
     course = await _make_paid_course(db, instructor.id)
 
@@ -149,7 +151,7 @@ async def test_webhook_refund_updates_enrollment_status(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """charge.refunded webhook sets payment and enrollment to refunded."""
-    instructor, _ = await _make_user(db, f"instr2-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr2-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, _ = await _make_user(db, f"stu2-{uuid.uuid4().hex[:6]}@test.com")
     course = await _make_paid_course(db, instructor.id)
 
@@ -187,7 +189,7 @@ async def test_webhook_refund_updates_enrollment_status(
     await db.refresh(payment)
     await db.refresh(enrollment)
     assert payment.status == "refunded"
-    assert enrollment.status == "refunded"
+    assert enrollment.status == "unenrolled"
 
 
 @pytest.mark.asyncio
@@ -195,7 +197,7 @@ async def test_list_payments_returns_history(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """GET /users/me/payments returns the student's payment records."""
-    instructor, _ = await _make_user(db, f"instr3-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr3-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, token = await _make_user(db, f"stu3-{uuid.uuid4().hex[:6]}@test.com")
     course = await _make_paid_course(db, instructor.id)
 

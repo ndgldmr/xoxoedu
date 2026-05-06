@@ -107,26 +107,31 @@ async def delete_post(
 
 # ── Voting ─────────────────────────────────────────────────────────────────────
 
-@router.post("/discussions/{post_id}/upvote", status_code=200)
-async def toggle_upvote(
+@router.put("/discussions/{post_id}/upvote", status_code=200)
+async def add_upvote(
     post_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = require_role(Role.STUDENT, Role.ADMIN),
 ) -> dict:
-    """Toggle an upvote on a discussion post.
+    """Idempotently add an upvote to a discussion post."""
+    post = await service.set_upvote(db, current_user, post_id, upvoted=True)
+    return ok(post.model_dump())
 
-    Calling this endpoint when the user has not yet upvoted adds an upvote.
-    Calling it again removes the upvote.  Authors cannot upvote their own posts.
-    The response reflects the updated ``upvote_count`` and ``viewer_has_upvoted``
-    state.
-    """
-    post = await service.toggle_upvote(db, current_user, post_id)
+
+@router.delete("/discussions/{post_id}/upvote", status_code=200)
+async def remove_upvote(
+    post_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = require_role(Role.STUDENT, Role.ADMIN),
+) -> dict:
+    """Idempotently remove an upvote from a discussion post."""
+    post = await service.set_upvote(db, current_user, post_id, upvoted=False)
     return ok(post.model_dump())
 
 
 # ── Flagging ───────────────────────────────────────────────────────────────────
 
-@router.post("/discussions/{post_id}/flag", status_code=201)
+@router.post("/discussions/{post_id}/flags", status_code=201)
 async def flag_post(
     post_id: uuid.UUID,
     body: FlagIn,
@@ -145,7 +150,7 @@ async def flag_post(
 
 # ── Admin moderation queue ─────────────────────────────────────────────────────
 
-@router.get("/admin/moderation/flags")
+@router.get("/admin/discussions/flags")
 async def list_flags(
     db: AsyncSession = Depends(get_db),
     current_user: User = require_role(Role.ADMIN),
@@ -169,7 +174,7 @@ async def list_flags(
     )
 
 
-@router.post("/admin/moderation/flags/{flag_id}/resolve", status_code=200)
+@router.post("/admin/discussions/flags/{flag_id}/resolve", status_code=200)
 async def resolve_flag(
     flag_id: uuid.UUID,
     body: ResolveFlagIn,

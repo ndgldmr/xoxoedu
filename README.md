@@ -4,6 +4,12 @@ XOXO Education is a proprietary, AI-native Learning Management System (LMS) buil
 
 Students enroll in courses, watch video lessons with AI-generated captions, take quizzes and assignments with AI feedback, and earn verifiable certificates. Admins create and manage courses, grade submissions, run analytics, and configure AI behavior per course.
 
+Production split:
+
+- Marketing site: `https://www.xoxoeducation.com/`
+- App SPA: `https://app.xoxoeducation.com/`
+- Main-site auth buttons should point to `https://app.xoxoeducation.com/sign-in` and `https://app.xoxoeducation.com/sign-up`
+
 ---
 
 ## Table of Contents
@@ -152,18 +158,21 @@ xoxoedu/
 │   ├── alembic/      # Database migrations
 │   ├── tests/        # Unit + integration tests
 │   └── docker-compose.yml
-├── web/              # React + Vite web application
+├── web-client/       # Authenticated React + Vite app for app.xoxoeducation.com
 │   └── src/
 │       ├── pages/    # Route-level page components
 │       ├── components/  # Shared UI components
 │       ├── store/    # Zustand stores
 │       ├── hooks/    # Custom React hooks
 │       └── lib/      # API client, auth utilities
+├── web/              # Legacy/parallel frontend workspace and historical docs
 └── README.md         # This file
 ```
 
 See [`backend/README.md`](backend/README.md) for full backend documentation.
-See [`web/README.md`](web/README.md) for full frontend documentation.
+See [`web-client/README.md`](web-client/README.md) for the active web-client roadmap, process, and sprint specs.
+See [`web-client/DESIGN.md`](web-client/DESIGN.md) for the active web-client visual foundation and token baseline.
+See [`web/README.md`](web/README.md) for the earlier frontend plan and legacy documentation.
 
 ---
 
@@ -187,7 +196,7 @@ uv run alembic upgrade head               # run migrations (first time + after s
 ### Start the web dev server
 
 ```bash
-cd web
+cd web-client
 pnpm install
 pnpm dev    # Vite dev server on :5173
 ```
@@ -202,6 +211,10 @@ pnpm dev    # Vite dev server on :5173
 | Web app | http://localhost:5173 |
 | pgweb (DB browser) | http://localhost:8081 |
 | MinIO console | http://localhost:9001 |
+
+---
+
+In production, `web-client/` is deployed behind `app.xoxoeducation.com`; the public landing and marketing site at `xoxoeducation.com` is separate and is not edited in this repository.
 
 ---
 
@@ -223,9 +236,9 @@ All endpoints are under `/api/v1/`. Auth uses JWT RS256 — a 15-minute access t
 | **Phase 1 — Foundation** | S1–S3 | Auth, course structure, enrollments + progress | ✅ Complete |
 | **Phase 2 — Assessment & Payments** | S4–S6 | Quizzes, assignments, Stripe, certificates, admin grading, analytics | ✅ Complete |
 | **Phase 3 — AI Layer** | S7–S9 | AI feedback (Claude), Whisper transcription, RAG indexing, RAG course assistant | ✅ Complete |
-| **Phase 4 — Real-Time & Social** | S10–S11 | Discussion threads, notifications, batches/cohorts, live sessions, calendar | S10A ✅, S10B ✅, S10C ✅, S10D ✅, S11A–S11C ⏳ |
-| **Phase 5 — Hardening** | S12 | Observability (OpenTelemetry, Sentry), security audit, load testing (k6), GDPR | ⏳ Upcoming |
-| **Phase 6 — Clients** | FW1–FW4, FM1–FM2 | Web client (React + Vite), mobile client (Expo) | FW1 ✅, FW2-A ✅, FW2-B ✅, FW2-C–E 🚧 |
+| **Phase 4 — Real-Time & Social** | S10–S11 | Discussion threads, notifications, batches/cohorts, live sessions, calendar | S10A ✅, S10B ✅, S10C ✅, S10D ✅, S11A ✅, S11B ✅, S11C ✅ |
+| **Phase 5 — Hardening** | S12A–S12D | Observability, security/upload safety, performance/load validation, privacy/audit readiness | ⏳ Upcoming |
+| **Phase 6 — Clients** | FW1–FW4, FM1–FM2 | Web client (React + Vite), mobile client (Expo) | FW1 ✅, FW2-A ✅, FW2-B ✅, FW2-C ✅, FW2-D ✅, FW2-E ✅ |
 
 Detailed sprint scope is documented in [`backend/README.md`](backend/README.md) and [`web/README.md`](web/README.md).
 

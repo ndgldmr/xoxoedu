@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import date
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ARRAY, Boolean, String, Text
+from sqlalchemy import ARRAY, Boolean, Date, String, Text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -65,6 +66,11 @@ class User(Base, UUIDMixin, TimestampMixin):
     headline: Mapped[str | None] = mapped_column(String(255), nullable=True)
     social_links: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     skills: Mapped[list[str] | None] = mapped_column(ARRAY(Text), nullable=True)
+
+    date_of_birth: Mapped[date | None] = mapped_column(Date, nullable=True)
+    country: Mapped[str | None] = mapped_column(String(2), nullable=True)
+    gender: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    gender_self_describe: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     sessions: Mapped[list[Session]] = relationship("Session", back_populates="user")
     oauth_accounts: Mapped[list[OAuthAccount]] = relationship(

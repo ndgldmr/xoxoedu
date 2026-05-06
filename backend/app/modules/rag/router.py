@@ -112,7 +112,7 @@ async def stream_assistant(
     return EventSourceResponse(generator)
 
 
-@router.get("/assistant/conversations")
+@router.get("/users/me/assistant/conversations")
 async def list_conversations(
     course_id: uuid.UUID | None = None,
     current_user: User = Depends(get_current_verified_user),

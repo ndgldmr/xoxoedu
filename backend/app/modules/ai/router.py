@@ -11,7 +11,7 @@ from app.db.session import get_db
 from app.modules.ai import service
 from app.modules.ai.schemas import AIConfigOut, AIConfigUpdate
 
-router = APIRouter(prefix="/ai", tags=["ai"])
+router = APIRouter(tags=["ai"])
 
 
 @router.get(

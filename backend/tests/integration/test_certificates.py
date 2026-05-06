@@ -18,6 +18,8 @@ from app.db.models.user import User
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
 async def _make_user(db: AsyncSession, email: str, role: str = "student") -> tuple[User, str]:
+    local, domain = email.split("@")
+    email = f"{local}_{uuid.uuid4().hex[:8]}@{domain}"
     user = User(
         id=uuid.uuid4(),
         email=email,
@@ -85,7 +87,7 @@ async def test_generate_certificate_for_completed_course(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """POST /certificates/generate issues a certificate for a completed enrollment."""
-    instructor, _ = await _make_user(db, f"instr-cert-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr-cert-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, token = await _make_user(db, f"stu-cert-{uuid.uuid4().hex[:6]}@test.com")
     course, _ = await _make_completed_enrollment(db, student.id, instructor.id)
 
@@ -107,7 +109,7 @@ async def test_generate_certificate_not_eligible(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """POST /certificates/generate raises 422 if enrollment is not completed."""
-    instructor, _ = await _make_user(db, f"instr-ne-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr-ne-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, token = await _make_user(db, f"stu-ne-{uuid.uuid4().hex[:6]}@test.com")
 
     course = Course(
@@ -137,7 +139,7 @@ async def test_list_certificates(
     client: AsyncClient, db: AsyncSession
 ) -> None:
     """GET /certificates returns the student's earned certificates."""
-    instructor, _ = await _make_user(db, f"instr-list-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    instructor, _ = await _make_user(db, f"instr-list-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, token = await _make_user(db, f"stu-list-{uuid.uuid4().hex[:6]}@test.com")
     course, _ = await _make_completed_enrollment(db, student.id, instructor.id)
 
@@ -150,7 +152,7 @@ async def test_list_certificates(
     await db.commit()
 
     resp = await client.get(
-        "/api/v1/certificates",
+        "/api/v1/users/me/certificates",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 200
@@ -163,8 +165,8 @@ async def test_list_certificates(
 async def test_verify_certificate_public(
     client: AsyncClient, db: AsyncSession
 ) -> None:
-    """GET /verify/{token} returns certificate data without authentication."""
-    instructor, _ = await _make_user(db, f"instr-ver-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    """GET /certificates/verify/{token} returns certificate data without authentication."""
+    instructor, _ = await _make_user(db, f"instr-ver-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, _ = await _make_user(db, f"stu-ver-{uuid.uuid4().hex[:6]}@test.com")
     course, _ = await _make_completed_enrollment(db, student.id, instructor.id)
 
@@ -177,7 +179,7 @@ async def test_verify_certificate_public(
     ))
     await db.commit()
 
-    resp = await client.get(f"/api/v1/verify/{token}")
+    resp = await client.get(f"/api/v1/certificates/verify/{token}")
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["verification_token"] == token
@@ -189,8 +191,8 @@ async def test_verify_certificate_public(
 async def test_verify_certificate_invalid_token(
     client: AsyncClient, db: AsyncSession
 ) -> None:
-    """GET /verify/{token} returns 404 for an unknown token."""
-    resp = await client.get("/api/v1/verify/nonexistent-token-abc123")
+    """GET /certificates/verify/{token} returns 404 for an unknown token."""
+    resp = await client.get("/api/v1/certificates/verify/nonexistent-token-abc123")
     assert resp.status_code == 404
 
 
@@ -198,8 +200,8 @@ async def test_verify_certificate_invalid_token(
 async def test_create_certificate_request(
     client: AsyncClient, db: AsyncSession
 ) -> None:
-    """POST /certificate-requests creates a pending request."""
-    instructor, _ = await _make_user(db, f"instr-req-{uuid.uuid4().hex[:6]}@test.com", "instructor")
+    """POST /certificates/requests creates a pending request."""
+    instructor, _ = await _make_user(db, f"instr-req-{uuid.uuid4().hex[:6]}@test.com", "admin")
     student, token = await _make_user(db, f"stu-req-{uuid.uuid4().hex[:6]}@test.com")
     course = Course(
         slug=f"req-course-{uuid.uuid4().hex[:8]}",
@@ -215,7 +217,7 @@ async def test_create_certificate_request(
     await db.commit()
 
     resp = await client.post(
-        f"/api/v1/certificate-requests?course_id={course.id}",
+        f"/api/v1/certificates/requests?course_id={course.id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201

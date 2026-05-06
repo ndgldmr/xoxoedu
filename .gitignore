@@ -4,11 +4,36 @@ memory/
 # Internal docs
 DESIGN_BRIEF.md
 
+# macOS
+.DS_Store
+**/.DS_Store
+
+# pnpm
+.pnpm-store/
+
+# Deprecated web client
+web/
+
+# Internal docs — not for version control
+backend/README.md
+web-client/README.md
+web-client/DESIGN.md
+
+# Claude Code
+web-client/skills-lock.json
+web-client/.agents/
+
+# Backend
+backend/.env
+backend/.env.local
+backend/coverage.xml
+backend/alembic/versions/__pycache__/
+
 # Web client
-web/node_modules/
-web/dist/
-web/.env
-web/.env.local
-web/.env.*.local
-
-
+web-client/node_modules/
+web-client/dist/
+web-client/.env
+web-client/.env.local
+web-client/.env.*.local
+web-client/test-results/
+web-client/playwright-report/

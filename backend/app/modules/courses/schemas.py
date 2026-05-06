@@ -97,6 +97,7 @@ class LessonOut(BaseModel):
     is_locked: bool
     position: int
     created_at: datetime
+    content: dict | None = None
     resources: list[ResourceOut] = []
 
 

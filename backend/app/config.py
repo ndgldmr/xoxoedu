@@ -80,6 +80,7 @@ class Settings(BaseSettings):
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""
     STRIPE_PUBLISHABLE_KEY: str = ""
+    STRIPE_SUBSCRIPTION_WEBHOOK_SECRET: str = ""
 
     # AI / LLM
     GEMINI_API_KEY: str = ""

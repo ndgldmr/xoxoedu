@@ -157,14 +157,25 @@ async def delete_note(
 
 # ── Bookmarks ──────────────────────────────────────────────────────────────────
 
-@router.post("/lessons/{lesson_id}/bookmark", status_code=200)
-async def toggle_bookmark(
+@router.put("/lessons/{lesson_id}/bookmark", status_code=200)
+async def add_bookmark(
     lesson_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user: User = require_role(Role.STUDENT),
 ) -> dict:
-    """Toggle a bookmark on a lesson; creates it if absent, removes it if present."""
-    bookmarked = await service.toggle_bookmark(db, current_user.id, lesson_id)
+    """Idempotently add a bookmark to a lesson."""
+    bookmarked = await service.set_bookmark(db, current_user.id, lesson_id, bookmarked=True)
+    return ok(BookmarkToggleOut(bookmarked=bookmarked).model_dump())
+
+
+@router.delete("/lessons/{lesson_id}/bookmark", status_code=200)
+async def remove_bookmark(
+    lesson_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = require_role(Role.STUDENT),
+) -> dict:
+    """Idempotently remove a bookmark from a lesson."""
+    bookmarked = await service.set_bookmark(db, current_user.id, lesson_id, bookmarked=False)
     return ok(BookmarkToggleOut(bookmarked=bookmarked).model_dump())
 
 

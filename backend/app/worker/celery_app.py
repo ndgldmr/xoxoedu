@@ -71,6 +71,7 @@ celery_app.conf.update(
         "app.modules.auth.tasks.send_verification_email":              {"queue": "critical"},
         "app.modules.auth.tasks.send_password_reset_email":            {"queue": "critical"},
         "app.modules.notifications.tasks.send_notification_email":     {"queue": "critical"},
+        "app.modules.notifications.tasks.send_billing_cycle_reminder": {"queue": "bulk_email"},
         # ── bulk_email ── announcement fan-out; throughput over latency
         "app.modules.admin.tasks.send_announcement_emails":       {"queue": "bulk_email"},
         "app.modules.admin.tasks.send_announcement_email_batch":  {"queue": "bulk_email"},
@@ -82,9 +83,12 @@ celery_app.conf.update(
         "app.modules.certificates.tasks.generate_certificate_pdf": {"queue": "media"},
         # ── indexing ── embedding + pgvector writes; independent of media
         "app.modules.rag.tasks.index_lesson": {"queue": "indexing"},
+        # ── bulk_email / critical ── live session reminders fan-out to batch members
+        "app.modules.batches.tasks.send_live_session_reminder": {"queue": "bulk_email"},
         # ── maintenance ── beat-scheduled recovery tasks; routed to critical
         # so they execute promptly and never compete with heavy workloads.
         "app.worker.maintenance.retry_stuck_transcriptions": {"queue": "critical"},
+        "app.worker.maintenance.enqueue_billing_due_reminders": {"queue": "critical"},
     },
 
     # ── RabbitMQ / AMQP reliability ────────────────────────────────────────────
@@ -117,6 +121,10 @@ celery_app.conf.update(
             "task": "app.worker.maintenance.retry_stuck_transcriptions",
             "schedule": 3600.0,  # every hour
         },
+        "enqueue-billing-due-reminders": {
+            "task": "app.worker.maintenance.enqueue_billing_due_reminders",
+            "schedule": 3600.0,  # every hour
+        },
     },
 )
 
@@ -128,6 +136,7 @@ celery_app.autodiscover_tasks([
     "app.modules.video",
     "app.modules.rag",
     "app.modules.notifications",
+    "app.modules.batches",
 ])
 
 # Maintenance tasks live outside the module tree autodiscover_tasks scans

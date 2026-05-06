@@ -115,7 +115,7 @@ async def test_submit_quiz_enqueues_feedback_task(
 
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay") as mock_delay:
         resp = await client.post(
-            f"/api/v1/quizzes/{quiz.id}/submit",
+            f"/api/v1/quizzes/{quiz.id}/submissions",
             json={"answers": {str(quiz.questions[0].id): ["a"]}},
             headers=_auth(s_token),
         )
@@ -144,7 +144,7 @@ async def test_submit_quiz_ai_disabled_no_task(
 
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay") as mock_delay:
         resp = await client.post(
-            f"/api/v1/quizzes/{quiz.id}/submit",
+            f"/api/v1/quizzes/{quiz.id}/submissions",
             json={"answers": {str(quiz.questions[0].id): ["a"]}},
             headers=_auth(s_token),
         )
@@ -167,7 +167,7 @@ async def test_feedback_visible_in_submission_after_task(
     # Submit quiz with wrong answer so the task has something to give feedback on
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay"):
         resp = await client.post(
-            f"/api/v1/quizzes/{quiz.id}/submit",
+            f"/api/v1/quizzes/{quiz.id}/submissions",
             json={"answers": {str(quiz.questions[0].id): ["b"]}},
             headers=_auth(s_token),
         )
@@ -206,7 +206,7 @@ async def test_submit_response_has_empty_feedback_list(
 
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay"):
         resp = await client.post(
-            f"/api/v1/quizzes/{quiz.id}/submit",
+            f"/api/v1/quizzes/{quiz.id}/submissions",
             json={"answers": {str(quiz.questions[0].id): ["a"]}},
             headers=_auth(s_token),
         )
@@ -228,7 +228,7 @@ async def test_feedback_visible_in_list_submissions(
 
     with patch("app.modules.ai.tasks.generate_quiz_feedback.delay"):
         resp = await client.post(
-            f"/api/v1/quizzes/{quiz.id}/submit",
+            f"/api/v1/quizzes/{quiz.id}/submissions",
             json={"answers": {str(quiz.questions[0].id): ["b"]}},
             headers=_auth(s_token),
         )

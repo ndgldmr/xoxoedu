@@ -42,6 +42,28 @@ class QuizQuestionIn(BaseModel):
     points: int = Field(default=1, ge=1)
 
 
+class QuizUpdateIn(BaseModel):
+    """Full-replacement payload for updating a quiz.
+
+    All fields are required because the admin editor always sends the complete
+    quiz state on save.  This avoids the complexity of delta-patch semantics for
+    the question list and keeps the service logic simple.
+
+    Attributes:
+        title: Replacement display name.
+        description: Optional introductory text; ``None`` clears it.
+        max_attempts: Maximum submission attempts allowed.
+        time_limit_minutes: Per-attempt time limit; ``None`` means unlimited.
+        questions: Complete ordered list of questions that replaces the existing set.
+    """
+
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = None
+    max_attempts: int = Field(default=3, ge=1)
+    time_limit_minutes: int | None = Field(default=None, ge=1)
+    questions: list[QuizQuestionIn] = Field(min_length=1)
+
+
 class QuizIn(BaseModel):
     """Payload for creating a quiz on a lesson.
 

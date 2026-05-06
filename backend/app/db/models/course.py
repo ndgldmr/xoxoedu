@@ -175,10 +175,10 @@ class Lesson(Base, UUIDMixin, TimestampMixin):
 
     chapter: Mapped[Chapter] = relationship("Chapter", back_populates="lessons")
     resources: Mapped[list[LessonResource]] = relationship(
-        "LessonResource", back_populates="lesson"
+        "LessonResource", back_populates="lesson", cascade="all, delete-orphan"
     )
     transcript: Mapped[LessonTranscript | None] = relationship(
-        "LessonTranscript", back_populates="lesson", uselist=False
+        "LessonTranscript", back_populates="lesson", uselist=False, cascade="all, delete-orphan"
     )
 
 

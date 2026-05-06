@@ -1,6 +1,7 @@
 """Business logic for authentication: registration, login, token rotation, and OAuth."""
 
-from datetime import UTC, datetime, timedelta
+import uuid
+from datetime import UTC, date, datetime, timedelta
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -37,6 +38,11 @@ async def register(
     username: str,
     password: str,
     display_name: str,
+    date_of_birth: date,
+    country: str,
+    gender: str,
+    avatar_url: str,
+    social_links: dict | None,
 ) -> User:
     """Create a new student account and send an email-verification link.
 
@@ -46,6 +52,11 @@ async def register(
         username: Desired mention handle; must be unique across all users.
         password: Plain-text password; stored as a bcrypt hash.
         display_name: Initial display name for the user's public profile.
+        date_of_birth: Required onboarding date of birth.
+        country: Signup country used for launch-market mapping.
+        gender: Selected gender option.
+        avatar_url: Uploaded avatar public URL.
+        social_links: Optional social profile URLs.
 
     Returns:
         The newly created ``User`` ORM instance.
@@ -70,6 +81,12 @@ async def register(
         role="student",
         email_verified=False,
         display_name=display_name,
+        date_of_birth=date_of_birth,
+        country=country,
+        gender=gender,
+        gender_self_describe=None,
+        avatar_url=avatar_url,
+        social_links=social_links,
     )
     db.add(user)
     await db.commit()
@@ -81,6 +98,20 @@ async def register(
     send_verification_email.delay(email, token)
 
     return user
+
+
+async def is_username_available(
+    db: AsyncSession,
+    username: str,
+    *,
+    exclude_user_id: uuid.UUID | None = None,
+) -> bool:
+    """Return whether a normalized username is free to claim."""
+    stmt = select(User).where(User.username == username)
+    if exclude_user_id is not None:
+        stmt = stmt.where(User.id != exclude_user_id)
+    existing = await db.scalar(stmt)
+    return existing is None
 
 
 async def verify_email(db: AsyncSession, token: str) -> None:

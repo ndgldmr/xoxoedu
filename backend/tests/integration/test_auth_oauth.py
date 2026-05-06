@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.user import User
@@ -26,13 +27,15 @@ async def test_oauth_callback_creates_new_user(client: AsyncClient, db: AsyncSes
         "app.modules.auth.router.google_get_token",
         new=AsyncMock(return_value=MOCK_TOKEN),
     ):
-        resp = await client.get("/api/v1/auth/google/callback")
+        resp = await client.get("/api/v1/auth/google/callback", follow_redirects=False)
 
-    assert resp.status_code == 200
-    data = resp.json()["data"]
-    assert "access_token" in data
-    assert data["user"]["email"] == "oauthuser@gmail.com"
-    assert data["user"]["email_verified"] is True
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/login?oauth=success"
+
+    created_user = await db.scalar(select(User).where(User.email == "oauthuser@gmail.com"))
+    assert created_user is not None
+    assert created_user.email_verified is True
+    assert created_user.avatar_url is None
 
 
 @pytest.mark.asyncio
@@ -57,16 +60,13 @@ async def test_oauth_callback_links_existing_email(client: AsyncClient, db: Asyn
         "app.modules.auth.router.google_get_token",
         new=AsyncMock(return_value=mock_token),
     ):
-        resp = await client.get("/api/v1/auth/google/callback")
+        resp = await client.get("/api/v1/auth/google/callback", follow_redirects=False)
 
-    assert resp.status_code == 200
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/login?oauth=success"
     # Should not create a duplicate user
-    from sqlalchemy import func, select
-
-    from app.db.models.user import User as UserModel
-
     count = await db.scalar(
-        select(func.count()).where(UserModel.email == "oauthexisting@gmail.com")
+        select(func.count()).where(User.email == "oauthexisting@gmail.com")
     )
     assert count == 1
 
@@ -81,9 +81,25 @@ async def test_oauth_callback_existing_oauth_account(client: AsyncClient, db: As
         "app.modules.auth.router.google_get_token",
         new=AsyncMock(return_value=mock_token),
     ):
-        resp1 = await client.get("/api/v1/auth/google/callback")
-        resp2 = await client.get("/api/v1/auth/google/callback")
+        resp1 = await client.get("/api/v1/auth/google/callback", follow_redirects=False)
+        resp2 = await client.get("/api/v1/auth/google/callback", follow_redirects=False)
 
-    assert resp1.status_code == 200
-    assert resp2.status_code == 200
-    assert resp1.json()["data"]["user"]["email"] == resp2.json()["data"]["user"]["email"]
+    assert resp1.status_code == 302
+    assert resp2.status_code == 302
+    assert resp1.headers["location"] == "/login?oauth=success"
+    assert resp2.headers["location"] == "/login?oauth=success"
+
+    count = await db.scalar(select(func.count()).where(User.email == "repeat@gmail.com"))
+    assert count == 1
+
+
+@pytest.mark.asyncio
+async def test_oauth_callback_redirects_to_error_on_provider_failure(client: AsyncClient) -> None:
+    with patch(
+        "app.modules.auth.router.google_get_token",
+        new=AsyncMock(side_effect=RuntimeError("oauth failed")),
+    ):
+        resp = await client.get("/api/v1/auth/google/callback", follow_redirects=False)
+
+    assert resp.status_code == 302
+    assert resp.headers["location"] == "/login?oauth=error"

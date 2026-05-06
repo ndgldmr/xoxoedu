@@ -168,7 +168,7 @@ async def test_submit_quiz_pass(client: AsyncClient, db: AsyncSession) -> None:
     quiz = await _make_quiz(db, lesson.id)
 
     resp = await client.post(
-        f"/api/v1/quizzes/{quiz.id}/submit",
+        f"/api/v1/quizzes/{quiz.id}/submissions",
         json={"answers": {str(quiz.questions[0].id): ["b"]}},
         headers=_auth(s_token),
     )
@@ -194,7 +194,7 @@ async def test_submit_quiz_fail(client: AsyncClient, db: AsyncSession) -> None:
     q = result.scalar_one()
 
     resp = await client.post(
-        f"/api/v1/quizzes/{quiz.id}/submit",
+        f"/api/v1/quizzes/{quiz.id}/submissions",
         json={"answers": {str(q.id): ["a"]}},  # "a" is wrong; correct is "b"
         headers=_auth(s_token),
     )
@@ -221,7 +221,7 @@ async def test_answers_revealed_after_all_attempts(
     q = result.scalar_one()
 
     resp = await client.post(
-        f"/api/v1/quizzes/{quiz.id}/submit",
+        f"/api/v1/quizzes/{quiz.id}/submissions",
         json={"answers": {str(q.id): ["a"]}},
         headers=_auth(s_token),
     )
@@ -248,10 +248,10 @@ async def test_max_attempts_exceeded(client: AsyncClient, db: AsyncSession) -> N
     payload = {"answers": {str(q.id): ["a"]}}
     headers = _auth(s_token)
     # First attempt — allowed
-    await client.post(f"/api/v1/quizzes/{quiz.id}/submit", json=payload, headers=headers)
+    await client.post(f"/api/v1/quizzes/{quiz.id}/submissions", json=payload, headers=headers)
     # Second attempt — should be rejected
     resp = await client.post(
-        f"/api/v1/quizzes/{quiz.id}/submit", json=payload, headers=headers
+        f"/api/v1/quizzes/{quiz.id}/submissions", json=payload, headers=headers
     )
     assert resp.status_code == 409
     assert resp.json()["error"]["code"] == "MAX_ATTEMPTS_EXCEEDED"
@@ -274,8 +274,8 @@ async def test_list_submissions(client: AsyncClient, db: AsyncSession) -> None:
     headers = _auth(s_token)
     payload = {"answers": {str(q.id): ["a"]}}
     # Submit twice
-    await client.post(f"/api/v1/quizzes/{quiz.id}/submit", json=payload, headers=headers)
-    await client.post(f"/api/v1/quizzes/{quiz.id}/submit", json=payload, headers=headers)
+    await client.post(f"/api/v1/quizzes/{quiz.id}/submissions", json=payload, headers=headers)
+    await client.post(f"/api/v1/quizzes/{quiz.id}/submissions", json=payload, headers=headers)
 
     resp = await client.get(f"/api/v1/quizzes/{quiz.id}/submissions", headers=headers)
     assert resp.status_code == 200
